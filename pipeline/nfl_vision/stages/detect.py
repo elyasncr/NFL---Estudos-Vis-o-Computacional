@@ -12,13 +12,23 @@ from nfl_vision.schemas import Deteccao, DetectOut
 
 
 def faixa_dos_pes(img: np.ndarray, bbox) -> np.ndarray:
-    """Faixa logo abaixo da caixa (10% da altura); na borda, a faixa interna inferior."""
+    """Faixa logo abaixo da caixa (10% da altura), recortada pelos limites da imagem."""
     x1, y1, x2, y2 = (int(round(v)) for v in bbox)
     x1, x2 = max(x1, 0), min(x2, img.shape[1])
     altura = max(1, int(round((y2 - y1) * 0.10)))
-    if y2 + altura <= img.shape[0]:
-        return img[y2:y2 + altura, x1:x2]
-    return img[max(y2 - altura, 0):y2, x1:x2]
+    return img[y2:min(y2 + altura, img.shape[0]), x1:x2]
+
+
+def toca_borda_inferior(bbox, altura_img: int) -> bool:
+    return bbox[3] >= altura_img - 2
+
+
+def _fora_de_campo(img: np.ndarray, bbox, cfg: Config) -> bool:
+    """Gramado insuficiente sob os pés; jogador cortado pela borda inferior é mantido."""
+    if toca_borda_inferior(bbox, img.shape[0]):
+        return False
+    faixa = faixa_dos_pes(img, bbox)
+    return fracao_gramado(faixa, cfg.gramado_hsv_min, cfg.gramado_hsv_max) < cfg.filtro_gramado_min
 
 
 def aplicar_filtros(deteccoes: list[Deteccao], img: np.ndarray, cfg: Config) -> list[Deteccao]:
@@ -31,8 +41,7 @@ def aplicar_filtros(deteccoes: list[Deteccao], img: np.ndarray, cfg: Config) -> 
         motivo = None
         if h < cfg.filtro_altura_rel * mediana:
             motivo = "pequeno"
-        elif fracao_gramado(faixa_dos_pes(img, d.bbox), cfg.gramado_hsv_min,
-                            cfg.gramado_hsv_max) < cfg.filtro_gramado_min:
+        elif _fora_de_campo(img, d.bbox, cfg):
             motivo = "fora_de_campo"
         saida.append(d.model_copy(update={"descartado": motivo is not None,
                                           "motivo_descarte": motivo}))
