@@ -229,6 +229,52 @@ def test_escrita_de_artefatos_e_atomica(tmp_path, foto, monkeypatch):
     assert not list(run_dir.glob("*.tmp"))
 
 
+def test_artefato_corrompido_ao_retomar(tmp_path, foto):
+    chamadas = []
+    runner = Runner(_etapas_abc(chamadas), tmp_path / "runs")
+    run_dir = runner.nova_analise(foto, CTX, Config(), {})
+    runner.executar(run_dir)
+
+    (run_dir / "a.json").write_text("{not json", encoding="utf-8")
+
+    with pytest.raises(EtapaFalhou) as erro:
+        runner.executar(run_dir, a_partir_de="c")
+
+    assert erro.value.etapa == "a"
+    assert "artefato inválido" in erro.value.mensagem
+
+
+def test_caminho_imagem_ausente_da_erro_claro(tmp_path, foto):
+    runner = Runner(_etapas([]), tmp_path / "runs")
+    run_dir = runner.nova_analise(foto, CTX, Config(), {})
+    (run_dir / f"input{foto.suffix.lower()}").unlink()
+
+    estado = runner.carregar_estado(run_dir)
+    with pytest.raises(FileNotFoundError, match="input"):
+        estado.caminho_imagem
+
+
+def test_saida_com_tipo_errado_falha_como_etapa(tmp_path, foto):
+    class Outro(BaseModel):
+        x: int = 1
+
+    def errada(estado):
+        return Outro()
+
+    etapas = [Etapa("a", Numero, errada)]
+    runner = Runner(etapas, tmp_path / "runs")
+    run_dir = runner.nova_analise(foto, CTX, Config(), {})
+
+    with pytest.raises(EtapaFalhou) as erro:
+        runner.executar(run_dir)
+
+    assert erro.value.etapa == "a"
+    assert "Outro" in erro.value.mensagem
+    assert "Numero" in erro.value.mensagem
+    manifest = ler_manifest(run_dir)
+    assert manifest["etapas"]["a"]["status"] == "erro"
+
+
 def test_le_correcoes(tmp_path, foto):
     runner = Runner(_etapas([]), tmp_path / "runs")
     run_dir = runner.nova_analise(foto, CTX, Config(), {})

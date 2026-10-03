@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Callable
 
 import numpy as np
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from nfl_vision.config import Config
 from nfl_vision.schemas import Contexto, Correcao
@@ -36,7 +36,10 @@ class Estado:
 
     @property
     def caminho_imagem(self) -> Path:
-        return next(self.run_dir.glob("input.*"))
+        caminho = next(self.run_dir.glob("input.*"), None)
+        if caminho is None:
+            raise FileNotFoundError(f"input.* ausente em {self.run_dir}")
+        return caminho
 
     def imagem(self) -> np.ndarray:
         if self._imagem is None:
@@ -137,19 +140,32 @@ class Runner:
                 status = manifest["etapas"].get(etapa.nome, {}).get("status")
                 if not arquivo.exists() or status != "ok":
                     raise EtapaFalhou(etapa.nome, "artefato ausente ou inválido", run_dir.name)
-                estado.saidas[etapa.nome] = etapa.saida.model_validate_json(arquivo.read_text("utf-8"))
+                try:
+                    estado.saidas[etapa.nome] = etapa.saida.model_validate_json(
+                        arquivo.read_text("utf-8")
+                    )
+                except (ValidationError, ValueError, json.JSONDecodeError) as exc:
+                    raise EtapaFalhou(
+                        etapa.nome, f"artefato inválido: {exc}", run_dir.name
+                    ) from exc
                 continue
 
             t0 = time.perf_counter()
             try:
                 saida = etapa.executar(estado)
+                if not isinstance(saida, etapa.saida):
+                    raise TypeError(
+                        f"etapa '{etapa.nome}' retornou {type(saida).__name__}, "
+                        f"esperado {etapa.saida.__name__}"
+                    )
             except Exception as exc:
+                mensagem = f"{type(exc).__name__}: {exc}"
                 manifest["etapas"][etapa.nome] = {
-                    "status": "erro", "mensagem": str(exc),
+                    "status": "erro", "mensagem": mensagem,
                     "duracao_s": round(time.perf_counter() - t0, 3),
                 }
                 _gravar_json(run_dir / "manifest.json", manifest)
-                raise EtapaFalhou(etapa.nome, str(exc), run_dir.name) from exc
+                raise EtapaFalhou(etapa.nome, mensagem, run_dir.name) from exc
 
             _gravar_texto(arquivo, saida.model_dump_json(indent=2))
             estado.saidas[etapa.nome] = saida
