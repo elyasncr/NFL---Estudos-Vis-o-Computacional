@@ -130,3 +130,59 @@ def test_roboflow_nfl_exige_chave(monkeypatch):
     monkeypatch.delenv("ROBOFLOW_API_KEY", raising=False)
     with pytest.raises(RuntimeError, match="ROBOFLOW_API_KEY"):
         preditores.PreditorRoboflowNFL("nfl/1")
+
+
+def test_preditor_yolo_bruto_nao_filtra(foto_sintetica, monkeypatch):
+    caminho, caixas = foto_sintetica
+    _detectar_caixas(monkeypatch, caixas)
+
+    p = preditores.PreditorYoloBruto(Config())
+
+    assert [caixa for _, caixa in p.prever(caminho)] == caixas  # árbitro e arquibancada incluídos
+    assert p.pos_processamento == "nenhum"
+
+
+def test_pos_processamento_de_cada_preditor():
+    assert preditores.PreditorNosso.pos_processamento == "filtros de campo + remoção de árbitro"
+    assert preditores.PreditorRFDETR.pos_processamento == "nenhum"
+    assert preditores.PreditorRoboflowNFL.pos_processamento == "modelo treinado em NFL (classe player)"
+
+
+def test_roboflow_nfl_envia_limiar_ao_servidor(monkeypatch):
+    monkeypatch.setenv("ROBOFLOW_API_KEY", "chave")
+    p = preditores.PreditorRoboflowNFL("nfl/1", conf=0.4)
+    assert p.cliente.inference_configuration.confidence_threshold == 0.4
+
+
+def test_rfdetr_usa_imagem_com_orientacao_exif(tmp_path):
+    from types import SimpleNamespace
+
+    imagem = tmp_path / "x.jpg"
+    exif = Image.Exif()
+    exif[0x0112] = 6
+    Image.new("RGB", (100, 50)).save(imagem, exif=exif)
+    recebidas = []
+
+    def predict(im, threshold):
+        recebidas.append((im.size, im.mode))
+        return SimpleNamespace(xyxy=np.empty((0, 4)), confidence=np.empty(0),
+                               class_id=np.empty(0, int), data={})
+
+    p = object.__new__(preditores.PreditorRFDETR)
+    p.modelo = SimpleNamespace(predict=predict)
+    p.conf, p.ids_pessoa = 0.25, {1}
+
+    assert p.prever(imagem) == []
+    assert recebidas == [((50, 100), "RGB")]
+
+
+def test_classes_coco_fallback_para_rfdetr_antigo(monkeypatch):
+    import sys
+    from types import ModuleType
+
+    antigo = ModuleType("rfdetr.util.coco_classes")
+    antigo.COCO_CLASSES = {1: "person", 2: "bicycle"}
+    monkeypatch.setitem(sys.modules, "rfdetr.assets.coco_classes", None)  # import falha
+    monkeypatch.setitem(sys.modules, "rfdetr.util.coco_classes", antigo)
+
+    assert preditores._classes_coco() == {1: "person", 2: "bicycle"}
