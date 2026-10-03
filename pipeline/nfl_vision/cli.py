@@ -104,26 +104,25 @@ def _analisar_ou_reprocessar(foto, times, temporada, semana, run, a_partir_de):
         raise typer.BadParameter("não informe a foto junto com --run", param_hint="FOTO")
     if run and a_partir_de is None:
         raise typer.BadParameter("--run exige --from <etapa>", param_hint="--run")
-    try:
-        if run:
-            if a_partir_de not in pipeline.NOMES_ETAPAS:
-                raise typer.BadParameter(
-                    f"use uma etapa: {', '.join(pipeline.NOMES_ETAPAS)}", param_hint="--from")
+    if run:
+        if a_partir_de not in pipeline.NOMES_ETAPAS:
+            raise typer.BadParameter(
+                f"use uma etapa: {', '.join(pipeline.NOMES_ETAPAS)}", param_hint="--from")
+        try:
             return pipeline.reprocessar(run, a_partir_de, ao_arquivar=_avisar_arquivamento)
-        else:
-            if foto is None or None in times or temporada is None or semana is None:
-                raise typer.BadParameter("informe a foto, --times, --temporada e --semana")
-            if not foto.exists():
-                raise typer.BadParameter(f"arquivo não encontrado: {foto}", param_hint="FOTO")
-            try:
-                ingest.validar_formato(foto)
-            except ingest.FormatoNaoSuportado as exc:
-                raise typer.BadParameter(str(exc), param_hint="FOTO") from exc
-            _validar_imagem(foto)
-            contexto = _validar_contexto(times, temporada, semana)
-            return pipeline.analisar(foto, contexto)
-    except FileNotFoundError as exc:
-        raise typer.BadParameter(str(exc), param_hint="--run") from exc
+        except FileNotFoundError as exc:
+            raise typer.BadParameter(str(exc), param_hint="--run") from exc
+    if foto is None or None in times or temporada is None or semana is None:
+        raise typer.BadParameter("informe a foto, --times, --temporada e --semana")
+    if not foto.exists():
+        raise typer.BadParameter(f"arquivo não encontrado: {foto}", param_hint="FOTO")
+    try:
+        ingest.validar_formato(foto)
+    except ingest.FormatoNaoSuportado as exc:
+        raise typer.BadParameter(str(exc), param_hint="FOTO") from exc
+    _validar_imagem(foto)
+    contexto = _validar_contexto(times, temporada, semana)
+    return pipeline.analisar(foto, contexto)
 
 
 @app.command()

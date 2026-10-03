@@ -180,3 +180,14 @@ def test_eval_jersey_grava_resultado(dados, tmp_path, monkeypatch):
     assert r.exit_code == 0, r.output
     arquivo = next(paths.avaliacoes_dir().glob("jersey-*.json"))
     assert json.loads(arquivo.read_text("utf-8"))["acuracia_geral"] == 1.0
+
+
+def test_file_not_found_na_analise_nova_nao_culpa_run(dados, foto_sintetica, monkeypatch):
+    def sem_pesos(*a, **k):
+        raise FileNotFoundError("pesos ausentes")
+
+    monkeypatch.setattr(cli.pipeline, "analisar", sem_pesos)
+    r = runner.invoke(app, ["analyze", str(foto_sintetica[0]), *BASE])
+
+    assert r.exit_code != 2, r.output
+    assert isinstance(r.exception, FileNotFoundError)
