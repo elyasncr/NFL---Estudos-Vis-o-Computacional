@@ -8,6 +8,7 @@ from sklearn.cluster import KMeans
 from nfl_vision import paths, teams
 from nfl_vision.config import Config
 from nfl_vision.cores import bgr_para_lab, delta_e, hex_para_lab, mascara_gramado
+from nfl_vision.geometria import caixa_inteira
 from nfl_vision.schemas import Deteccao, TeamOut, TimeDet
 
 MIN_PIXELS = 50
@@ -15,10 +16,11 @@ MAX_PIXELS_KMEANS = 3000
 
 
 def recorte_tronco(img: np.ndarray, bbox) -> np.ndarray:
+    """Tronco: 10–50% da altura e 20–80% da largura da caixa."""
     x1, y1, x2, y2 = bbox
     w, h = x2 - x1, y2 - y1
-    ya, yb = max(int(y1 + 0.10 * h), 0), max(int(y1 + 0.50 * h), 0)
-    xa, xb = max(int(x1 + 0.20 * w), 0), max(int(x1 + 0.80 * w), 0)
+    xa, ya, xb, yb = caixa_inteira(
+        (x1 + 0.20 * w, y1 + 0.10 * h, x1 + 0.80 * w, y1 + 0.50 * h), img.shape)
     return img[ya:yb, xa:xb]
 
 

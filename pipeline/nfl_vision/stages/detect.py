@@ -8,15 +8,16 @@ import numpy as np
 
 from nfl_vision.config import Config
 from nfl_vision.cores import fracao_gramado
+from nfl_vision.geometria import caixa_inteira
 from nfl_vision.schemas import Deteccao, DetectOut
 
 
 def faixa_dos_pes(img: np.ndarray, bbox) -> np.ndarray:
     """Faixa logo abaixo da caixa (10% da altura), recortada pelos limites da imagem."""
-    x1, y1, x2, y2 = (int(round(v)) for v in bbox)
-    x1, x2 = max(x1, 0), min(x2, img.shape[1])
-    altura = max(1, int(round((y2 - y1) * 0.10)))
-    return img[y2:min(y2 + altura, img.shape[0]), x1:x2]
+    x1, _, x2, y2 = bbox
+    altura = max(1, int(round((y2 - bbox[1]) * 0.10)))
+    xa, ya, xb, yb = caixa_inteira((x1, y2, x2, y2 + altura), img.shape)
+    return img[ya:yb, xa:xb]
 
 
 def toca_borda_inferior(bbox, altura_img: int) -> bool:
