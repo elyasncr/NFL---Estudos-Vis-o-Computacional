@@ -80,6 +80,9 @@ def eh_branco(lab) -> bool:
 
 
 def tamanho_minimo_grupo(n: int) -> int:
+    # com poucos jogadores, um único de cada time ainda é um grupo legítimo
+    if n < 5:
+        return 1
     return max(2, math.ceil(0.15 * n))
 
 

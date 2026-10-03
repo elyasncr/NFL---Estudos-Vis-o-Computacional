@@ -167,3 +167,11 @@ def test_cor_dominante_amostra_muitos_pixels(monkeypatch):
 
     assert delta_e(team.cor_dominante(px), VERMELHO) < 1
     assert tamanhos == [3000]
+
+
+def test_poucos_jogadores_ainda_formam_dois_times():
+    rotulos, centros = agrupar(np.array([VERMELHO, AZUL]), CFG)
+    assert len(centros) == 2
+    rotulos, centros = agrupar(np.array([VERMELHO, VERMELHO, AZUL]), CFG)
+    assert len(centros) == 2
+    assert rotulos[0] == rotulos[1] != rotulos[2]
