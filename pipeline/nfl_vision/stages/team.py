@@ -1,0 +1,128 @@
+"""Etapa 3: time de cada jogador pela cor do tronco; detecção de árbitro."""
+
+import numpy as np
+from sklearn.cluster import KMeans
+
+from nfl_vision import paths, teams
+from nfl_vision.config import Config
+from nfl_vision.cores import bgr_para_lab, delta_e, hex_para_lab, mascara_gramado
+from nfl_vision.schemas import Deteccao, TeamOut, TimeDet
+
+MIN_PIXELS = 50
+
+
+def recorte_tronco(img: np.ndarray, bbox) -> np.ndarray:
+    x1, y1, x2, y2 = bbox
+    w, h = x2 - x1, y2 - y1
+    ya, yb = max(int(y1 + 0.10 * h), 0), max(int(y1 + 0.50 * h), 0)
+    xa, xb = max(int(x1 + 0.20 * w), 0), max(int(x1 + 0.80 * w), 0)
+    return img[ya:yb, xa:xb]
+
+
+def pixels_uteis(recorte: np.ndarray, cfg: Config) -> np.ndarray:
+    """Pixels LAB do recorte, sem o gramado."""
+    if recorte.size == 0:
+        return np.empty((0, 3))
+    fora = ~mascara_gramado(recorte, cfg.gramado_hsv_min, cfg.gramado_hsv_max)
+    return bgr_para_lab(recorte[fora])
+
+
+def eh_arbitro(lab_px: np.ndarray) -> bool:
+    luz = lab_px[:, 0]
+    return bool((luz < 30).mean() >= 0.25 and (luz > 80).mean() >= 0.25)
+
+
+def _distintos(pontos: np.ndarray) -> int:
+    return len(np.unique(pontos.round(2), axis=0))
+
+
+def cor_dominante(lab_px: np.ndarray) -> np.ndarray:
+    k = min(3, _distintos(lab_px))
+    km = KMeans(n_clusters=k, n_init=4, random_state=0).fit(lab_px)
+    return km.cluster_centers_[np.bincount(km.labels_).argmax()]
+
+
+def eh_branco(lab) -> bool:
+    return bool(lab[0] > 85 and np.hypot(lab[1], lab[2]) < 10)
+
+
+def agrupar(cores: np.ndarray, cfg: Config) -> tuple[np.ndarray, np.ndarray]:
+    """Rótulo de grupo por cor e centros dos grupos (1 ou 2)."""
+    unico = (np.zeros(len(cores), int), cores.mean(axis=0, keepdims=True))
+    if _distintos(cores) < 2:
+        return unico
+    km = KMeans(n_clusters=2, n_init=4, random_state=0).fit(cores)
+    centros = km.cluster_centers_
+    if delta_e(centros[0], centros[1]) < cfg.delta_e_grupo_unico:
+        return unico
+    return km.labels_.astype(int), centros
+
+
+def _custo(centro, paleta) -> float:
+    return min(delta_e(centro, p) for p in paleta)
+
+
+def mapear_grupos(centros: np.ndarray, paletas: dict[str, list[np.ndarray]]) -> dict[int, str | None]:
+    a, b = list(paletas)
+
+    def mais_proximo(centro):
+        return min((a, b), key=lambda t: _custo(centro, paletas[t]))
+
+    if len(centros) == 1:
+        return {0: None if eh_branco(centros[0]) else mais_proximo(centros[0])}
+
+    brancos = [eh_branco(c) for c in centros]
+    if brancos[0] != brancos[1]:
+        colorido = 1 if brancos[0] else 0
+        time = mais_proximo(centros[colorido])
+        return {colorido: time, 1 - colorido: b if time == a else a}
+
+    direto = _custo(centros[0], paletas[a]) + _custo(centros[1], paletas[b])
+    cruzado = _custo(centros[0], paletas[b]) + _custo(centros[1], paletas[a])
+    return {0: a, 1: b} if direto <= cruzado else {0: b, 1: a}
+
+
+def confianca(cor, centros: np.ndarray, rotulo: int) -> float:
+    d_proprio = delta_e(cor, centros[rotulo])
+    if len(centros) == 1:
+        return float(np.clip(1 - d_proprio / 50, 0, 1))
+    d_outro = delta_e(cor, centros[1 - rotulo])
+    total = d_proprio + d_outro
+    return 0.5 if total == 0 else float(d_outro / total)
+
+
+def classificar(img: np.ndarray, deteccoes: list[Deteccao],
+                paletas: dict[str, list[np.ndarray]], cfg: Config) -> list[TimeDet]:
+    itens: dict[int, TimeDet] = {}
+    candidatos: list[tuple[int, np.ndarray]] = []
+    for d in deteccoes:
+        if d.descartado:
+            continue
+        px = pixels_uteis(recorte_tronco(img, d.bbox), cfg)
+        if len(px) < MIN_PIXELS:
+            itens[d.det_id] = TimeDet(det_id=d.det_id, time=None, confianca=0.0)
+        elif eh_arbitro(px):
+            itens[d.det_id] = TimeDet(det_id=d.det_id, time=None, confianca=1.0, arbitro=True)
+        else:
+            candidatos.append((d.det_id, cor_dominante(px)))
+
+    if candidatos:
+        rotulos, centros = agrupar(np.array([c for _, c in candidatos]), cfg)
+        mapa = mapear_grupos(centros, paletas)
+        for (det_id, cor), rotulo in zip(candidatos, rotulos):
+            conf = confianca(cor, centros, int(rotulo))
+            itens[det_id] = TimeDet(
+                det_id=det_id,
+                time=mapa[int(rotulo)] if conf >= cfg.limiar_time else None,
+                confianca=round(conf, 4),
+                cor_lab=tuple(float(v) for v in cor),
+            )
+    return [itens[k] for k in sorted(itens)]
+
+
+def executar(estado) -> TeamOut:
+    times_df = teams.carregar_times(paths.cache_dir())
+    paletas = {t: [hex_para_lab(c) for c in teams.cores(t, times_df)]
+               for t in estado.contexto.times}
+    deteccoes = estado.saidas["detect"].deteccoes
+    return TeamOut(itens=classificar(estado.imagem(), deteccoes, paletas, estado.config))
