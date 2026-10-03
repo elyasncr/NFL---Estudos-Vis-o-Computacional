@@ -83,6 +83,8 @@ def aplicar_correcoes(times: Iterable[TimeDet], numeros: Iterable[NumeroDet],
     time_por_det = {t.det_id: t.time for t in times if not t.arbitro}
     num_por_det = {n.det_id: n.numero for n in numeros}
     for c in correcoes:
+        if c.det_id not in time_por_det:  # det_id de outra detecção ou árbitro
+            continue
         if c.time is not None:
             time_por_det[c.det_id] = teams.normalizar(c.time)
         if c.numero is not None:

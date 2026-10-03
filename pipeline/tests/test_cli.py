@@ -118,3 +118,15 @@ def test_interrompido(dados, monkeypatch):
     r = runner.invoke(app, ["correct", "2025-01-01-001", "--det", "1", "--numero", "2"])
     assert r.exit_code == 130
     assert "interrompido" in r.output
+
+
+def test_from_detect_avisa_correcoes_arquivadas(dados, foto_sintetica, modelos_falsos, monkeypatch):
+    monkeypatch.setenv("COLUMNS", "300")
+    runner.invoke(app, ["analyze", str(foto_sintetica[0]), *BASE])
+    run_id = next(paths.runs_dir().iterdir()).name
+    runner.invoke(app, ["correct", run_id, "--det", "3", "--numero", "14"])
+
+    r = runner.invoke(app, ["analyze", "--run", run_id, "--from", "detect"])
+
+    assert r.exit_code == 0, r.output
+    assert "correções anteriores arquivadas em" in r.output

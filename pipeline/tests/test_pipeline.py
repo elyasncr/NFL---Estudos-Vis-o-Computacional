@@ -111,3 +111,28 @@ def test_finalizar_falha_ao_gerar_png(dados, foto_sintetica, modelos_falsos, mon
     monkeypatch.setattr(pipeline.cv2, "imencode", lambda ext, img: (False, None))
     with pytest.raises(RuntimeError, match="falha ao gerar anotada.png"):
         pipeline.analisar(foto_sintetica[0], CTX)
+
+
+def test_nova_deteccao_arquiva_correcoes(dados, foto_sintetica, modelos_falsos):
+    run_dir, _ = pipeline.analisar(foto_sintetica[0], CTX)
+    pipeline.corrigir(run_dir.name, det_id=3, numero=14)
+    arquivados = []
+
+    _, analise = pipeline.reprocessar(run_dir.name, "detect", ao_arquivar=arquivados.append)
+
+    assert not (run_dir / "corrections.json").exists()
+    assert len(arquivados) == 1 and arquivados[0].exists()
+    assert arquivados[0].parent == run_dir
+    assert arquivados[0].name.startswith("corrections.") and arquivados[0].name.endswith(".bak.json")
+    assert not any(j.corrigido_pelo_usuario for j in analise.jogadores)
+
+
+def test_reprocessar_de_etapa_posterior_mantem_correcoes(dados, foto_sintetica, modelos_falsos):
+    run_dir, _ = pipeline.analisar(foto_sintetica[0], CTX)
+    pipeline.corrigir(run_dir.name, det_id=3, numero=14)
+    arquivados = []
+
+    _, analise = pipeline.reprocessar(run_dir.name, "team", ao_arquivar=arquivados.append)
+
+    assert arquivados == []
+    assert _por_id(analise)[3].numero == 14

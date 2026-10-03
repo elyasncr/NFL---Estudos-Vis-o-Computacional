@@ -78,6 +78,10 @@ def _tratando_falha_de_etapa():
         raise typer.Exit(130)
 
 
+def _avisar_arquivamento(caminho: Path) -> None:
+    console.print(f"[yellow]correções anteriores arquivadas em {escape(str(caminho))}[/yellow]")
+
+
 @app.command()
 def analyze(
     foto: Optional[Path] = typer.Argument(None, help="Foto JPG ou PNG"),
@@ -99,7 +103,7 @@ def _analisar_ou_reprocessar(foto, times, temporada, semana, run, a_partir_de):
             if a_partir_de not in pipeline.NOMES_ETAPAS:
                 raise typer.BadParameter(
                     f"use uma etapa: {', '.join(pipeline.NOMES_ETAPAS)}", param_hint="--from")
-            return pipeline.reprocessar(run, a_partir_de)
+            return pipeline.reprocessar(run, a_partir_de, ao_arquivar=_avisar_arquivamento)
         else:
             if foto is None or None in times or temporada is None or semana is None:
                 raise typer.BadParameter("informe a foto, --times, --temporada e --semana")

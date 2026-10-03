@@ -172,3 +172,16 @@ def test_elevado_vence_cortado_com_mesmo_numero():
 def test_inativos_nao_contam_para_ambiguidade():
     df = _linhas((12, "Ativo", "ACT"), (12, "Aposentado", "RET"), (12, "Trocado", "TRD"))
     assert buscar(df, 2025, 11, "KC", 12)[1] == "Ativo"
+
+
+def test_correcoes_de_det_inexistente_ou_arbitro_sao_ignoradas():
+    times = [TimeDet(det_id=0, time="KC", confianca=0.9),
+             TimeDet(det_id=1, time=None, confianca=1.0, arbitro=True)]
+    numeros = [NumeroDet(det_id=0, numero=87, confianca=0.9)]
+    correcoes = [Correcao(det_id=7, numero=15, timestamp="t1"),
+                 Correcao(det_id=1, time="BUF", numero=3, timestamp="t2")]
+
+    time_por_det, num_por_det = aplicar_correcoes(times, numeros, correcoes)
+
+    assert time_por_det == {0: "KC"}
+    assert num_por_det == {0: 87}

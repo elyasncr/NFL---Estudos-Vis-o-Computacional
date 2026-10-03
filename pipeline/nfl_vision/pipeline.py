@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+from typing import Callable
 
 import cv2
 
@@ -87,10 +88,30 @@ def analisar(imagem: Path, contexto: Contexto, config: Config | None = None) -> 
 SAIDAS_FINAIS = ("analise.json", "anotada.png")
 
 
-def reprocessar(analise_id: str, a_partir_de: str) -> tuple[Path, Analise]:
+# Refazer a detecção renumera os det_id: correções antigas apontariam para outra pessoa.
+ETAPAS_QUE_RENUMERAM = ("ingest", "detect")
+
+
+def _arquivar_correcoes(run_dir: Path) -> Path | None:
+    arquivo = run_dir / "corrections.json"
+    if not arquivo.exists():
+        return None
+    carimbo = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    destino = run_dir / f"corrections.{carimbo}.bak.json"
+    arquivo.rename(destino)
+    return destino
+
+
+def reprocessar(analise_id: str, a_partir_de: str,
+                ao_arquivar: Callable[[Path], None] | None = None) -> tuple[Path, Analise]:
+    """Refaz a partir de `a_partir_de`. `ao_arquivar` recebe o caminho das correções arquivadas."""
     run_dir = _run_dir(analise_id)
     for nome in SAIDAS_FINAIS:
         (run_dir / nome).unlink(missing_ok=True)
+    if a_partir_de in ETAPAS_QUE_RENUMERAM:
+        arquivado = _arquivar_correcoes(run_dir)
+        if arquivado is not None and ao_arquivar is not None:
+            ao_arquivar(arquivado)
     return run_dir, finalizar(_runner().executar(run_dir, a_partir_de))
 
 
