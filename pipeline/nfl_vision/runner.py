@@ -1,6 +1,7 @@
 """Executa etapas em sequência, gravando a saída de cada uma em disco."""
 
 import json
+import re
 import shutil
 import time
 from dataclasses import dataclass, field
@@ -58,8 +59,16 @@ class Etapa:
 
 def proximo_id(runs_dir: Path, hoje: date | None = None) -> str:
     prefixo = (hoje or date.today()).isoformat()
-    existentes = list(runs_dir.glob(f"{prefixo}-*")) if runs_dir.exists() else []
-    n = max((int(p.name.rsplit("-", 1)[1]) for p in existentes), default=0) + 1
+    padrao = re.compile(rf"{re.escape(prefixo)}-(\d+)")
+    numeros = []
+    if runs_dir.exists():
+        for p in runs_dir.iterdir():
+            if not p.is_dir():
+                continue
+            m = padrao.fullmatch(p.name)
+            if m:
+                numeros.append(int(m.group(1)))
+    n = max(numeros, default=0) + 1
     return f"{prefixo}-{n:03d}"
 
 

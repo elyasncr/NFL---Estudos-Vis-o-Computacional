@@ -185,6 +185,16 @@ def test_proximo_id_sequencial(tmp_path):
     assert proximo_id(runs, hoje) == "2026-10-03-008"
 
 
+def test_proximo_id_ignora_nomes_fora_do_padrao(tmp_path):
+    runs = tmp_path / "runs"
+    hoje = date(2026, 10, 3)
+    (runs / "2026-10-03-001").mkdir(parents=True)
+    (runs / "2026-10-03-007").mkdir()
+    (runs / "2026-10-03-001-old").mkdir()
+    (runs / "2026-10-03-099.txt").write_text("nao e diretorio", encoding="utf-8")
+    assert proximo_id(runs, hoje) == "2026-10-03-008"
+
+
 def test_le_correcoes(tmp_path, foto):
     runner = Runner(_etapas([]), tmp_path / "runs")
     run_dir = runner.nova_analise(foto, CTX, Config(), {})
