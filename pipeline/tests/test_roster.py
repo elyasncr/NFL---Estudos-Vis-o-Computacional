@@ -4,7 +4,7 @@ import pytest
 from nfl_vision import paths
 from nfl_vision.schemas import Contexto, Correcao, NumeroDet, TimeDet
 from nfl_vision.stages.roster import (
-    RosterIndisponivel, aplicar_correcoes, buscar, carregar_roster, resolver,
+    COLUNAS, RosterIndisponivel, aplicar_correcoes, buscar, carregar_roster, resolver,
 )
 
 CTX = Contexto(temporada=2025, semana=11, times=("KC", "BUF"))
@@ -125,3 +125,28 @@ def test_sem_rede_com_cache_velho(tmp_path, monkeypatch):
     _loader(monkeypatch, ConnectionError("offline"))
     with pytest.raises(RosterIndisponivel, match="desatualizado"):
         carregar_roster(2025, 5, tmp_path)
+
+
+def test_download_normaliza_tipos_e_siglas(tmp_path, monkeypatch):
+    bruto = pl.DataFrame({
+        "season": pl.Series([2025, 2025, 2025], dtype=pl.Int32),
+        "week": pl.Series([11, 11, 11], dtype=pl.Int32),
+        "team": [" lar", "KC", "KC"],
+        "jersey_number": pl.Series([10, None, 87], dtype=pl.Int32),
+        "position": ["WR", "OL", "TE"],
+        "full_name": ["Jogador LA 10", "Sem Numero", "Jogador KC 87"],
+        "gsis_id": ["00-a", "00-b", "00-c"],
+        "status": ["ACT", "ACT", "ACT"],
+        "headshot_url": ["x", "y", "z"],
+        "birth_date": ["2000-01-01"] * 3,
+    })
+    _loader(monkeypatch, bruto)
+
+    carregar_roster(2025, 11, tmp_path)
+    cache = pl.read_parquet(tmp_path / "rosters" / "2025.parquet")
+
+    assert cache.columns == COLUNAS
+    assert cache["team"].to_list() == ["LA", "KC", "KC"]
+    assert cache.schema["jersey_number"] == pl.Int64
+    assert cache["jersey_number"].to_list() == [10, None, 87]
+    assert buscar(cache, 2025, 11, "LA", 10) == ("WR", "Jogador LA 10", "00-a", "ok")

@@ -22,7 +22,7 @@ def _baixar(temporada: int) -> pl.DataFrame:
     df = nfl.load_rosters_weekly(seasons=[temporada]).select(COLUNAS)
     return df.with_columns(
         pl.col("jersey_number").cast(pl.Int64, strict=False),
-        pl.col("team").map_elements(teams.normalizar, return_dtype=pl.String),
+        pl.col("team").str.strip_chars().str.to_uppercase().replace(teams.ALIASES),
     )
 
 
