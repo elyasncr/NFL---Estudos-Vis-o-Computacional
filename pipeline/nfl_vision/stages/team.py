@@ -1,5 +1,7 @@
 """Etapa 3: time de cada jogador pela cor do tronco; detecção de árbitro."""
 
+import math
+
 import numpy as np
 from sklearn.cluster import KMeans
 
@@ -67,6 +69,10 @@ def eh_branco(lab) -> bool:
     return bool(lab[0] > 85 and np.hypot(lab[1], lab[2]) < 10)
 
 
+def tamanho_minimo_grupo(n: int) -> int:
+    return max(2, math.ceil(0.15 * n))
+
+
 def agrupar(cores: np.ndarray, cfg: Config) -> tuple[np.ndarray, np.ndarray]:
     """Rótulo de grupo por cor e centros dos grupos (1 ou 2)."""
     unico = (np.zeros(len(cores), int), cores.mean(axis=0, keepdims=True))
@@ -76,6 +82,10 @@ def agrupar(cores: np.ndarray, cfg: Config) -> tuple[np.ndarray, np.ndarray]:
     centros = km.cluster_centers_
     if delta_e(centros[0], centros[1]) < cfg.delta_e_grupo_unico:
         return unico
+    contagem = np.bincount(km.labels_, minlength=2)
+    if contagem.min() < tamanho_minimo_grupo(len(cores)):
+        # grupo pequeno demais é outlier: um só grupo, centrado na maioria
+        return np.zeros(len(cores), int), centros[[contagem.argmax()]]
     return km.labels_.astype(int), centros
 
 

@@ -127,3 +127,25 @@ def test_pixels_uteis_remove_gramado_so_quando_minoria():
 
     camisa_verde = np.full((40, 40, 3), VERDE_GB, np.uint8)
     assert len(pixels_uteis(camisa_verde, CFG)) == 40 * 40
+
+
+MARINHO = hex_para_lab("#0B162A")
+
+
+def test_outlier_sozinho_nao_forma_grupo():
+    rotulos, centros = agrupar(np.array([VERMELHO] * 5 + [MARINHO]), CFG)
+    assert len(centros) == 1
+    assert set(rotulos) == {0}
+
+
+def test_outlier_fica_sem_time_e_vermelhos_ficam_com_kc():
+    img = campo()
+    caixas = [jogador(img, 20 + 110 * i, 300, VERMELHO_KC) for i in range(5)]
+    caixas.append(jogador(img, 600, 300, (42, 22, 11)))  # #0B162A em BGR
+    dets = [Deteccao(det_id=i, bbox=b, confianca=0.9) for i, b in enumerate(caixas)]
+
+    itens = classificar(img, dets, PALETAS, CFG)
+
+    assert [t.time for t in itens[:5]] == ["KC"] * 5
+    assert all(t.confianca >= 0.8 for t in itens[:5])
+    assert itens[5].confianca < 0.60 and itens[5].time is None
