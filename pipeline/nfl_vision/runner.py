@@ -91,6 +91,18 @@ def _gravar_json(caminho: Path, dados) -> None:
     _gravar_texto(caminho, json.dumps(dados, indent=2, ensure_ascii=False))
 
 
+gravar_texto = _gravar_texto
+gravar_json = _gravar_json
+
+
+def atualizar_manifest(run_dir: Path, funcao: Callable[[dict], None]) -> dict:
+    """Lê o manifest, aplica `funcao` (que o altera no lugar) e grava de forma atômica."""
+    manifest = ler_manifest(run_dir)
+    funcao(manifest)
+    _gravar_json(run_dir / "manifest.json", manifest)
+    return manifest
+
+
 class Runner:
     def __init__(self, etapas: list[Etapa], runs_dir: Path):
         self.etapas = etapas
