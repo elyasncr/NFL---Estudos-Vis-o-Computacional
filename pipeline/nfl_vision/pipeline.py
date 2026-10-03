@@ -105,6 +105,8 @@ def _arquivar_correcoes(run_dir: Path) -> Path | None:
 def reprocessar(analise_id: str, a_partir_de: str,
                 ao_arquivar: Callable[[Path], None] | None = None) -> tuple[Path, Analise]:
     """Refaz a partir de `a_partir_de`. `ao_arquivar` recebe o caminho das correções arquivadas."""
+    if a_partir_de not in NOMES_ETAPAS:
+        raise ValueError(f"etapa desconhecida '{a_partir_de}'; use uma de: {', '.join(NOMES_ETAPAS)}")
     run_dir = _run_dir(analise_id)
     for nome in SAIDAS_FINAIS:
         (run_dir / nome).unlink(missing_ok=True)

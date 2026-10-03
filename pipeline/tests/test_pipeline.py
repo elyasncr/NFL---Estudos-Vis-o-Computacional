@@ -136,3 +136,15 @@ def test_reprocessar_de_etapa_posterior_mantem_correcoes(dados, foto_sintetica, 
 
     assert arquivados == []
     assert _por_id(analise)[3].numero == 14
+
+
+def test_reprocessar_etapa_invalida_nao_mexe_na_analise(dados, foto_sintetica, modelos_falsos):
+    run_dir, _ = pipeline.analisar(foto_sintetica[0], CTX)
+    pipeline.corrigir(run_dir.name, det_id=3, numero=14)
+
+    with pytest.raises(ValueError, match="etapa"):
+        pipeline.reprocessar(run_dir.name, "zzz")
+
+    assert (run_dir / "analise.json").exists()
+    assert (run_dir / "anotada.png").exists()
+    assert (run_dir / "corrections.json").exists()
