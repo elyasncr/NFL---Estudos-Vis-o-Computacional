@@ -150,3 +150,25 @@ def test_download_normaliza_tipos_e_siglas(tmp_path, monkeypatch):
     assert cache.schema["jersey_number"] == pl.Int64
     assert cache["jersey_number"].to_list() == [10, None, 87]
     assert buscar(cache, 2025, 11, "LA", 10) == ("WR", "Jogador LA 10", "00-a", "ok")
+
+
+def _linhas(*linhas):
+    return pl.DataFrame(
+        [dict(season=2025, week=11, team="KC", jersey_number=n, position="WR",
+              full_name=nome, gsis_id=nome, status=st) for n, nome, st in linhas]
+    )
+
+
+def test_cortado_sozinho_fica_fora_do_roster():
+    df = _linhas((12, "Cortado", "CUT"))
+    assert buscar(df, 2025, 11, "KC", 12)[3] == "numero_fora_do_roster"
+
+
+def test_elevado_vence_cortado_com_mesmo_numero():
+    df = _linhas((12, "Cortado", "CUT"), (12, "Elevado", "DEV"))
+    assert buscar(df, 2025, 11, "KC", 12)[1:] == ("Elevado", "Elevado", "ok")
+
+
+def test_inativos_nao_contam_para_ambiguidade():
+    df = _linhas((12, "Ativo", "ACT"), (12, "Aposentado", "RET"), (12, "Trocado", "TRD"))
+    assert buscar(df, 2025, 11, "KC", 12)[1] == "Ativo"

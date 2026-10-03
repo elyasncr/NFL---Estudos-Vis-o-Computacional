@@ -12,6 +12,11 @@ from nfl_vision.schemas import Contexto, Correcao, NumeroDet, RosterDet, RosterO
 COLUNAS = ["season", "week", "team", "jersey_number", "position", "full_name", "gsis_id", "status"]
 
 
+# Fora do elenco na semana: cortado, aposentado, trocado, isento, contrato encerrado.
+# ACT/DEV (elevado do practice squad) entram em campo; RES/INA ficam como candidatos.
+INATIVOS = ("CUT", "RET", "TRD", "EXE", "TRC")
+
+
 class RosterIndisponivel(RuntimeError):
     pass
 
@@ -61,6 +66,7 @@ def buscar(df: pl.DataFrame, temporada: int, semana: int, time: str,
     linhas = df.filter(
         (pl.col("season") == temporada) & (pl.col("week") == semana)
         & (pl.col("team") == time) & (pl.col("jersey_number") == numero)
+        & ~pl.col("status").is_in(INATIVOS).fill_null(False)
     )
     if linhas.height == 0:
         return None, None, None, "numero_fora_do_roster"
