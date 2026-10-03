@@ -55,6 +55,8 @@ def escolher_numero(leituras: list[tuple[str, float]], limiar: float) -> tuple[i
 
 class PaddleLeitor:
     def __init__(self, device: str):
+        # No Windows, importar paddleocr (→ modelscope → torch) antes do torch dá WinError 127 (shm.dll).
+        import torch  # noqa: F401
         from paddleocr import PaddleOCR
 
         self._ocr = PaddleOCR(
