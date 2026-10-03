@@ -1,6 +1,8 @@
 """Executa etapas em sequência, gravando a saída de cada uma em disco."""
 
+import hashlib
 import json
+import os
 import re
 import shutil
 import time
@@ -76,8 +78,14 @@ def ler_manifest(run_dir: Path) -> dict:
     return json.loads((run_dir / "manifest.json").read_text("utf-8"))
 
 
+def _gravar_texto(caminho: Path, texto: str) -> None:
+    tmp = caminho.with_name(caminho.name + ".tmp")
+    tmp.write_text(texto, encoding="utf-8")
+    os.replace(tmp, caminho)
+
+
 def _gravar_json(caminho: Path, dados) -> None:
-    caminho.write_text(json.dumps(dados, indent=2, ensure_ascii=False), encoding="utf-8")
+    _gravar_texto(caminho, json.dumps(dados, indent=2, ensure_ascii=False))
 
 
 class Runner:
@@ -95,6 +103,7 @@ class Runner:
             "contexto": contexto.model_dump(mode="json"),
             "config": config.model_dump(mode="json"),
             "versoes": versoes,
+            "input_sha256": hashlib.sha256(imagem.read_bytes()).hexdigest(),
             "etapas": {},
         })
         return run_dir
@@ -142,7 +151,7 @@ class Runner:
                 _gravar_json(run_dir / "manifest.json", manifest)
                 raise EtapaFalhou(etapa.nome, str(exc), run_dir.name) from exc
 
-            arquivo.write_text(saida.model_dump_json(indent=2), encoding="utf-8")
+            _gravar_texto(arquivo, saida.model_dump_json(indent=2))
             estado.saidas[etapa.nome] = saida
             manifest["etapas"][etapa.nome] = {
                 "status": "ok", "mensagem": None,

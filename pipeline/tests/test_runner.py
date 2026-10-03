@@ -1,5 +1,7 @@
+import hashlib
 import json
 from datetime import date
+from pathlib import Path
 
 import pytest
 from pydantic import BaseModel
@@ -193,6 +195,38 @@ def test_proximo_id_ignora_nomes_fora_do_padrao(tmp_path):
     (runs / "2026-10-03-001-old").mkdir()
     (runs / "2026-10-03-099.txt").write_text("nao e diretorio", encoding="utf-8")
     assert proximo_id(runs, hoje) == "2026-10-03-008"
+
+
+def test_manifest_contem_hash_da_entrada(tmp_path, foto):
+    runner = Runner(_etapas([]), tmp_path / "runs")
+    run_dir = runner.nova_analise(foto, CTX, Config(), {})
+
+    manifest = ler_manifest(run_dir)
+
+    assert manifest["input_sha256"] == hashlib.sha256(foto.read_bytes()).hexdigest()
+
+
+def test_escrita_de_artefatos_e_atomica(tmp_path, foto, monkeypatch):
+    import nfl_vision.runner as runner_mod
+
+    chamadas = []
+    runner = Runner(_etapas(chamadas), tmp_path / "runs")
+    run_dir = runner.nova_analise(foto, CTX, Config(), {})
+
+    substituicoes = []
+    original_replace = runner_mod.os.replace
+
+    def replace_espiao(origem, destino):
+        substituicoes.append(Path(origem).name)
+        return original_replace(origem, destino)
+
+    monkeypatch.setattr(runner_mod.os, "replace", replace_espiao)
+
+    runner.executar(run_dir)
+
+    assert substituicoes
+    assert all(nome.endswith(".tmp") for nome in substituicoes)
+    assert not list(run_dir.glob("*.tmp"))
 
 
 def test_le_correcoes(tmp_path, foto):
