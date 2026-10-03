@@ -34,7 +34,7 @@ def executar(estado) -> IngestOut:
     caminho = estado.caminho_imagem
     img = estado.imagem()
     return IngestOut(
-        caminho=str(caminho),
+        caminho=caminho.name,
         largura=img.shape[1],
         altura=img.shape[0],
         sha256=hashlib.sha256(caminho.read_bytes()).hexdigest(),
