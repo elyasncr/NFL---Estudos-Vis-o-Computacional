@@ -68,6 +68,7 @@ def modelos_falsos(monkeypatch, foto_sintetica, tmp_path):
 
     from nfl_vision.schemas import Deteccao
     from nfl_vision.stages import detect, jersey
+    from nfl_vision.stages.jersey import Leitura
 
     _, caixas = foto_sintetica
     chamadas = {"detect": 0}
@@ -78,7 +79,8 @@ def modelos_falsos(monkeypatch, foto_sintetica, tmp_path):
         chamadas["detect"] += 1
         return [Deteccao(det_id=i, bbox=b, confianca=0.9) for i, b in enumerate(caixas)]
 
-    leitor = LeitorFalso([[("87", 0.95)], [("15", 0.90)], [("17", 0.92)], [("3x", 0.99)]])
+    leitor = LeitorFalso([[Leitura("87", 0.95)], [Leitura("15", 0.90)],
+                          [Leitura("17", 0.92)], [Leitura("3x", 0.99)]])
     monkeypatch.setattr(detect, "detectar_pessoas", detectar)
     monkeypatch.setattr(detect, "_modelo", lambda p: SimpleNamespace(ckpt_path=str(pesos)))
     monkeypatch.setattr(jersey, "leitor_padrao", lambda device: leitor)

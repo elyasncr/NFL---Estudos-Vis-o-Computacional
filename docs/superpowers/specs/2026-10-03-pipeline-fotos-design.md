@@ -126,7 +126,11 @@ Lê com Pillow, aplica `ImageOps.exif_transpose`, converte para array BGR (OpenC
 
 ### `jersey`
 - Recorte da região do número: 15–60% da altura e 10–90% da largura da caixa, ampliado para pelo menos 128 px de altura.
-- PaddleOCR (detecção + reconhecimento) no recorte. Entre os textos que batem com `^\d{1,2}$`, fica o de maior confiança.
+- PaddleOCR (detecção + reconhecimento) no recorte; cada leitura traz texto, confiança e caixa (`rec_boxes`, ou o retângulo de `rec_polys`).
+- Normalização do texto: remove espaços e tira `.`, `#` e `-` das pontas (`#87` e `8 7` viram `87`).
+- Dígitos soltos: duas leituras de um dígito na mesma linha (centros verticais a menos de 0,5 × a maior altura, alturas a até ±40%) e vizinhas (espaço horizontal menor que a maior altura) geram também a leitura juntada, na ordem do x, com a menor das duas confianças. As leituras originais continuam valendo.
+- Válidos: 0–99 sem zero à esquerda (`0` vale; `07` e `00` não).
+- Escolha: o válido de maior confiança; se for de 1 dígito e houver um de 2 dígitos que o contém com confiança no máximo 0,15 abaixo, fica o de 2 dígitos (o OCR costuma ler só metade do número).
 - Confiança < 0,60 → `numero = null`.
 
 ### `roster`
