@@ -19,8 +19,58 @@ def test_carregar_yolo(tmp_path):
     assert [a.imagem.name for a in amostras] == ["a.jpg", "b.jpg"]
     assert amostras[0].caixas["player"] == [pytest.approx((40.0, 15.0, 60.0, 35.0))]
     assert len(amostras[0].caixas["referee"]) == 1
-    assert "ball" not in amostras[0].caixas  # linha de polígono ignorada
+    # polígono (segmentação) vira a caixa que o envolve
+    assert amostras[0].caixas["ball"] == [pytest.approx((10.0, 5.0, 50.0, 25.0))]
     assert amostras[1].caixas == {}
+
+
+def _dataset_yolo(raiz, nomes="names: ['ball', 'player']\n", split="test"):
+    if nomes is not None:
+        (raiz / "data.yaml").write_text(nomes, encoding="utf-8")
+    (raiz / split / "images").mkdir(parents=True)
+    (raiz / split / "labels").mkdir(parents=True)
+    return raiz / split
+
+
+def test_carregar_yolo_sem_data_yaml(tmp_path):
+    _dataset_yolo(tmp_path, nomes=None)
+    with pytest.raises(FileNotFoundError, match="data.yaml"):
+        carregar_yolo(tmp_path, "test")
+
+
+def test_carregar_yolo_sem_names(tmp_path):
+    _dataset_yolo(tmp_path, nomes="nc: 2\n")
+    with pytest.raises(ValueError, match="names"):
+        carregar_yolo(tmp_path, "test")
+
+
+def test_carregar_yolo_split_ausente_lista_existentes(tmp_path):
+    _dataset_yolo(tmp_path, split="valid")
+    (tmp_path / "train" / "images").mkdir(parents=True)
+    with pytest.raises(FileNotFoundError) as exc:
+        carregar_yolo(tmp_path, "val")
+    msg = str(exc.value)
+    assert "valid" in msg and "train" in msg and "Roboflow" in msg
+
+
+def test_carregar_yolo_classe_fora_de_names(tmp_path):
+    pasta = _dataset_yolo(tmp_path)
+    Image.new("RGB", (10, 10)).save(pasta / "images" / "a.jpg")
+    (pasta / "labels" / "a.txt").write_text("1 0.5 0.5 0.2 0.2\n7 0.5 0.5 0.2 0.2\n")
+    with pytest.raises(ValueError, match=r"a\.txt.*linha 2"):
+        carregar_yolo(tmp_path, "test")
+
+
+def test_carregar_yolo_respeita_orientacao_exif(tmp_path):
+    pasta = _dataset_yolo(tmp_path)
+    exif = Image.Exif()
+    exif[0x0112] = 6  # girar 90°: 100x50 armazenada vira 50x100 exibida
+    Image.new("RGB", (100, 50)).save(pasta / "images" / "a.jpg", exif=exif)
+    (pasta / "labels" / "a.txt").write_text("1 0.5 0.5 1.0 1.0\n")
+
+    caixa = carregar_yolo(tmp_path, "test")[0].caixas["player"][0]
+
+    assert caixa == pytest.approx((0.0, 0.0, 50.0, 100.0))
 
 
 def test_carregar_pastas(tmp_path):
