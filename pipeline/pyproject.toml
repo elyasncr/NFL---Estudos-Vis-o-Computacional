@@ -31,6 +31,17 @@ nfl-vision = "nfl_vision.cli:app"
 [dependency-groups]
 dev = ["pytest>=8"]
 
+[tool.uv]
+# ultralytics depende de opencv-python e o paddlex de opencv-contrib-python; os dois
+# gravam o mesmo pacote `cv2/` e o que for instalado por último sobrescreve o outro.
+# Só o contrib (superconjunto) fica instalado: as outras variantes são descartadas.
+# Num ambiente que já tinha as duas, a remoção do opencv-python apaga arquivos do
+# `cv2/`: rode `uv sync --reinstall-package opencv-contrib-python` uma vez.
+override-dependencies = [
+  "opencv-python; sys_platform == 'never'",
+  "opencv-python-headless; sys_platform == 'never'",
+]
+
 [tool.uv.sources]
 torch = [{ index = "pytorch-cu128" }]
 torchvision = [{ index = "pytorch-cu128" }]
