@@ -20,11 +20,16 @@ def recorte_tronco(img: np.ndarray, bbox) -> np.ndarray:
 
 
 def pixels_uteis(recorte: np.ndarray, cfg: Config) -> np.ndarray:
-    """Pixels LAB do recorte, sem o gramado."""
+    """Pixels LAB do recorte, sem o gramado.
+
+    Se a máscara cobre a maior parte do recorte, a camisa é verde: nada é removido.
+    """
     if recorte.size == 0:
         return np.empty((0, 3))
-    fora = ~mascara_gramado(recorte, cfg.gramado_hsv_min, cfg.gramado_hsv_max)
-    return bgr_para_lab(recorte[fora])
+    gramado = mascara_gramado(recorte, cfg.gramado_hsv_min, cfg.gramado_hsv_max)
+    if gramado.mean() > cfg.mascara_gramado_max_tronco:
+        return bgr_para_lab(recorte.reshape(-1, 3))
+    return bgr_para_lab(recorte[~gramado])
 
 
 def eh_arbitro(lab_px: np.ndarray) -> bool:

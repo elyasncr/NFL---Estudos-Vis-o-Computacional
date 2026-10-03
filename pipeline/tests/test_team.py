@@ -72,3 +72,35 @@ def test_classificar_imagem_sintetica():
     assert all(itens[i].confianca >= 0.99 for i in range(4))
     assert itens[4].arbitro and itens[4].time is None
     assert 5 not in itens
+
+
+def test_camisa_verde_nao_e_removida_como_gramado():
+    from sintetico import VERDE_GB
+
+    paletas = {"GB": [hex_para_lab("#203731"), hex_para_lab("#FFB612")], "KC": PALETAS["KC"]}
+    img = campo()
+    caixas = [
+        jogador(img, 100, 300, VERDE_GB),
+        jogador(img, 200, 300, VERDE_GB),
+        jogador(img, 400, 300, VERMELHO_KC),
+        jogador(img, 500, 300, VERMELHO_KC),
+    ]
+    dets = [Deteccao(det_id=i, bbox=b, confianca=0.9) for i, b in enumerate(caixas)]
+
+    itens = classificar(img, dets, paletas, CFG)
+
+    assert [t.time for t in itens] == ["GB", "GB", "KC", "KC"]
+
+
+def test_pixels_uteis_remove_gramado_so_quando_minoria():
+    from sintetico import VERDE, VERDE_GB
+
+    from nfl_vision.stages.team import pixels_uteis
+
+    recorte = np.zeros((40, 40, 3), np.uint8)
+    recorte[:, :] = VERMELHO_KC
+    recorte[:, :12] = VERDE  # 30% de gramado nas laterais
+    assert len(pixels_uteis(recorte, CFG)) == 40 * 28
+
+    camisa_verde = np.full((40, 40, 3), VERDE_GB, np.uint8)
+    assert len(pixels_uteis(camisa_verde, CFG)) == 40 * 40

@@ -13,6 +13,7 @@ class Config(BaseModel):
     filtro_gramado_min: float = 0.3
     gramado_hsv_min: tuple[int, int, int] = (35, 40, 40)
     gramado_hsv_max: tuple[int, int, int] = (85, 255, 255)
+    mascara_gramado_max_tronco: float = 0.6
 
     limiar_time: float = 0.60
     delta_e_grupo_unico: float = 15.0

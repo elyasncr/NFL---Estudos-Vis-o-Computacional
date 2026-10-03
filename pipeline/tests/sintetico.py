@@ -23,3 +23,4 @@ def arbitro(img, x, y, w=60, h=120):
     for i in range(w):
         img[y:y + h, x + i] = (0, 0, 0) if (i // 4) % 2 == 0 else (255, 255, 255)
     return (float(x), float(y), float(x + w), float(y + h))
+VERDE_GB = (49, 55, 32)       # #203731 em BGR
