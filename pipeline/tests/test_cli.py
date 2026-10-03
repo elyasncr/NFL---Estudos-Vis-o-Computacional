@@ -146,3 +146,37 @@ def test_combinacoes_invalidas_de_opcoes(dados, tmp_path, monkeypatch):
         r = runner.invoke(app, args)
         assert r.exit_code == 2, (args, r.output)
         assert trecho in r.output, (args, r.output)
+
+
+def test_eval_help_lista_comandos():
+    r = runner.invoke(app, ["eval", "--help"])
+    assert r.exit_code == 0, r.output
+    assert all(c in r.output for c in ("baixar", "detect", "jersey"))
+
+
+def test_eval_detect_benchmark_invalido(dados, tmp_path, monkeypatch):
+    monkeypatch.setenv("COLUMNS", "200")
+    r = runner.invoke(app, ["eval", "detect", "--dataset", str(tmp_path), "--benchmark", "xyz"])
+    assert r.exit_code == 2, r.output
+    assert "rfdetr ou roboflow-nfl" in r.output
+
+
+def test_eval_jersey_grava_resultado(dados, tmp_path, monkeypatch):
+    import json
+
+    from nfl_vision.stages import jersey
+    from nfl_vision.stages.jersey import Leitura
+
+    (tmp_path / "ds" / "test" / "87").mkdir(parents=True)
+    Image.new("RGB", (20, 20)).save(tmp_path / "ds" / "test" / "87" / "a.jpg")
+
+    class Leitor:
+        def ler(self, img):
+            return [Leitura("87", 0.9)]
+
+    monkeypatch.setattr(jersey, "leitor_padrao", lambda device: Leitor())
+    r = runner.invoke(app, ["eval", "jersey", "--dataset", str(tmp_path / "ds")])
+
+    assert r.exit_code == 0, r.output
+    arquivo = next(paths.avaliacoes_dir().glob("jersey-*.json"))
+    assert json.loads(arquivo.read_text("utf-8"))["acuracia_geral"] == 1.0

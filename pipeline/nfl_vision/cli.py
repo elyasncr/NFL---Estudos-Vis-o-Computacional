@@ -12,7 +12,7 @@ from rich.markup import escape
 from rich.table import Table
 
 from nfl_vision import paths, pipeline, teams
-from nfl_vision.runner import EtapaFalhou
+from nfl_vision.runner import EtapaFalhou, gravar_json
 from nfl_vision.schemas import Analise, Contexto
 from nfl_vision.stages import ingest
 
@@ -140,3 +140,84 @@ def correct(
         except (ValueError, FileNotFoundError) as exc:
             raise typer.BadParameter(str(exc)) from exc
     _imprimir(analise, paths.runs_dir() / analise_id)
+
+
+BENCHMARKS = ("rfdetr", "roboflow-nfl")
+
+
+def _salvar_avaliacao(nome: str, resultados) -> Path:
+    from datetime import datetime
+
+    destino = paths.avaliacoes_dir()
+    destino.mkdir(parents=True, exist_ok=True)
+    arquivo = destino / f"{nome}-{datetime.now():%Y%m%d-%H%M%S}.json"
+    gravar_json(arquivo, resultados)
+    return arquivo
+
+
+@eval_app.command("baixar")
+def eval_baixar(
+    workspace: str = typer.Option(..., "--workspace"),
+    projeto: str = typer.Option(..., "--projeto"),
+    versao: int = typer.Option(..., "--versao"),
+    formato: str = typer.Option("yolov11", "--formato", help="yolov11 (detecção) ou folder (recortes)"),
+) -> None:
+    """Baixa uma versão de dataset do Roboflow para data/datasets/."""
+    from nfl_vision.eval.datasets import baixar
+
+    console.print(f"Dataset em: {baixar(workspace, projeto, versao, formato, paths.datasets_dir())}")
+
+
+@eval_app.command("detect")
+def eval_detect_cmd(
+    dataset: Path = typer.Option(..., "--dataset", help="Pasta do dataset em formato YOLO"),
+    split: str = typer.Option("test", "--split"),
+    benchmark: List[str] = typer.Option([], "--benchmark", help="rfdetr e/ou roboflow-nfl"),
+    modelo_roboflow: str = typer.Option("nfl-player-model/4", "--modelo-roboflow"),
+) -> None:
+    """mAP@0.5 de jogador no split de teste, com benchmarks opcionais."""
+    from nfl_vision.config import Config
+    from nfl_vision.eval import detect as avaliacao
+    from nfl_vision.eval import preditores
+    from nfl_vision.eval.datasets import carregar_yolo
+
+    invalidos = [b for b in benchmark if b not in BENCHMARKS]
+    if invalidos:
+        raise typer.BadParameter(f"use {' ou '.join(BENCHMARKS)}", param_hint="--benchmark")
+
+    lista = [preditores.PreditorNosso(Config())]
+    for b in benchmark:
+        if b == "rfdetr":
+            lista.append(preditores.PreditorRFDETR())
+        else:
+            lista.append(preditores.PreditorRoboflowNFL(modelo_roboflow))
+
+    amostras = carregar_yolo(dataset, split)
+    resultados = [avaliacao.avaliar(p, amostras) for p in lista]
+
+    tabela = Table(title=f"Detecção — {dataset.name} ({split}, {len(amostras)} imagens)")
+    for coluna in ("preditor", "mAP@0.5", "árbitros como jogador"):
+        tabela.add_column(coluna)
+    for r in resultados:
+        arb = "—" if r["arbitros_como_jogador"] is None else f"{r['arbitros_como_jogador']:.2%}"
+        tabela.add_row(r["preditor"], f"{r['map50']:.3f}", arb)
+    console.print(tabela)
+    console.print(f"Resultados: {_salvar_avaliacao('detect', resultados)}")
+
+
+@eval_app.command("jersey")
+def eval_jersey_cmd(
+    dataset: Path = typer.Option(..., "--dataset", help="Pasta no formato <split>/<número>/<imagem>"),
+    split: str = typer.Option("test", "--split"),
+) -> None:
+    """Acurácia do OCR em recortes de números legíveis."""
+    from nfl_vision.config import Config
+    from nfl_vision.eval import jersey as avaliacao
+    from nfl_vision.eval.datasets import carregar_pastas
+    from nfl_vision.stages.jersey import leitor_padrao
+
+    cfg = Config()
+    r = avaliacao.avaliar(leitor_padrao(cfg.ocr_device), carregar_pastas(dataset, split),
+                          cfg.limiar_numero, cfg.numero_altura_min)
+    console.print(r)
+    console.print(f"Resultados: {_salvar_avaliacao('jersey', r)}")
