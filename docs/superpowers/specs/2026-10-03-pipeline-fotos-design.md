@@ -130,7 +130,7 @@ Lê com Pillow, aplica `ImageOps.exif_transpose`, converte para array BGR (OpenC
 - Confiança < 0,60 → `numero = null`.
 
 ### `roster`
-- `nflreadpy.load_rosters_weekly([temporada])`, cache em `data/cache/rosters/<temporada>.parquet`.
+- `nflreadpy.load_rosters_weekly([temporada])`, cache em `data/cache/rosters/<temporada>.parquet` (gravado de forma atômica). Se a semana pedida é maior que a última semana do cache (temporada em andamento), baixa de novo e regrava o cache; se a semana continua ausente após baixar, ou se não há rede e o cache está desatualizado, a etapa falha com `RosterIndisponivel`.
 - Siglas normalizadas pelo módulo `teams.py` (ex.: `LAR` → `LA`); siglas inválidas falham na validação da CLI.
 - Busca por temporada + semana + time + número. Mais de um resultado → prefere `status = ACT`; continuando ambíguo → `motivo = ambiguo`, campos `null`.
 - Número sem correspondência → `motivo = numero_fora_do_roster`, campos `null`.

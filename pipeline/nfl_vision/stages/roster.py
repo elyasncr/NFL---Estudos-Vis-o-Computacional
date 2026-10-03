@@ -1,5 +1,6 @@
 """Etapa 5: posição e nome pelo roster semanal (temporada + semana + time + número)."""
 
+import os
 from pathlib import Path
 from typing import Iterable
 
@@ -15,24 +16,43 @@ class RosterIndisponivel(RuntimeError):
     pass
 
 
-def carregar_roster(temporada: int, cache_dir: Path) -> pl.DataFrame:
-    arquivo = cache_dir / "rosters" / f"{temporada}.parquet"
-    if arquivo.exists():
-        return pl.read_parquet(arquivo)
-    try:
-        import nflreadpy as nfl
+def _baixar(temporada: int) -> pl.DataFrame:
+    import nflreadpy as nfl
 
-        df = nfl.load_rosters_weekly(seasons=[temporada]).select(COLUNAS)
-    except Exception as exc:
-        raise RosterIndisponivel(
-            f"roster de {temporada} indisponível (sem cache e sem rede?): {exc}"
-        ) from exc
-    df = df.with_columns(
+    df = nfl.load_rosters_weekly(seasons=[temporada]).select(COLUNAS)
+    return df.with_columns(
         pl.col("jersey_number").cast(pl.Int64, strict=False),
         pl.col("team").map_elements(teams.normalizar, return_dtype=pl.String),
     )
+
+
+def _gravar(df: pl.DataFrame, arquivo: Path) -> None:
     arquivo.parent.mkdir(parents=True, exist_ok=True)
-    df.write_parquet(arquivo)
+    tmp = arquivo.with_name(f"{arquivo.stem}.tmp.parquet")
+    df.write_parquet(tmp)
+    os.replace(tmp, arquivo)
+
+
+def carregar_roster(temporada: int, semana: int, cache_dir: Path) -> pl.DataFrame:
+    """Usa o cache se já cobre a semana; senão baixa de novo (temporada em andamento)."""
+    arquivo = cache_dir / "rosters" / f"{temporada}.parquet"
+    cache = pl.read_parquet(arquivo) if arquivo.exists() else None
+    if cache is not None and cache.height and cache["week"].max() >= semana:
+        return cache
+    try:
+        df = _baixar(temporada)
+    except Exception as exc:
+        if cache is not None:
+            raise RosterIndisponivel(
+                f"cache do roster de {temporada} desatualizado (sem a semana {semana}) "
+                f"e sem rede: {exc}"
+            ) from exc
+        raise RosterIndisponivel(
+            f"roster de {temporada} indisponível (sem cache e sem rede?): {exc}"
+        ) from exc
+    _gravar(df, arquivo)
+    if semana not in set(df["week"].to_list()):
+        raise RosterIndisponivel(f"semana {semana} de {temporada} não está no roster")
     return df
 
 
@@ -81,7 +101,7 @@ def resolver(df: pl.DataFrame, ctx: Contexto, time_por_det: dict[int, str | None
 
 
 def executar(estado) -> RosterOut:
-    df = carregar_roster(estado.contexto.temporada, paths.cache_dir())
+    df = carregar_roster(estado.contexto.temporada, estado.contexto.semana, paths.cache_dir())
     time_por_det, num_por_det = aplicar_correcoes(
         estado.saidas["team"].itens, estado.saidas["jersey"].itens, estado.correcoes()
     )

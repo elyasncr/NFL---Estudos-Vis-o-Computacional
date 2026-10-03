@@ -1,3 +1,4 @@
+import polars as pl
 import pytest
 
 from nfl_vision import paths
@@ -11,7 +12,7 @@ CTX = Contexto(temporada=2025, semana=11, times=("KC", "BUF"))
 
 @pytest.fixture
 def df(dados):
-    return carregar_roster(2025, paths.cache_dir())
+    return carregar_roster(2025, 11, paths.cache_dir())
 
 
 def test_busca_simples(df):
@@ -56,4 +57,71 @@ def test_sem_cache_e_sem_rede(tmp_path, monkeypatch):
 
     monkeypatch.setattr(nflreadpy, "load_rosters_weekly", sem_rede)
     with pytest.raises(RosterIndisponivel, match="2024"):
-        carregar_roster(2024, tmp_path)
+        carregar_roster(2024, 1, tmp_path)
+
+
+def _roster(semanas, temporada=2025):
+    n = len(semanas)
+    return pl.DataFrame({
+        "season": [temporada] * n, "week": semanas, "team": ["KC"] * n,
+        "jersey_number": list(range(1, n + 1)), "position": ["WR"] * n,
+        "full_name": [f"J{i}" for i in range(n)], "gsis_id": [f"00-{i}" for i in range(n)],
+        "status": ["ACT"] * n,
+    })
+
+
+def _cache(tmp_path, df, temporada=2025):
+    arquivo = tmp_path / "rosters" / f"{temporada}.parquet"
+    arquivo.parent.mkdir(parents=True, exist_ok=True)
+    df.write_parquet(arquivo)
+    return arquivo
+
+
+def _loader(monkeypatch, resposta):
+    import nflreadpy
+
+    chamadas = []
+
+    def carregar(**kwargs):
+        chamadas.append(kwargs)
+        if isinstance(resposta, Exception):
+            raise resposta
+        return resposta
+
+    monkeypatch.setattr(nflreadpy, "load_rosters_weekly", carregar)
+    return chamadas
+
+
+def test_cache_atual_nao_baixa(tmp_path, monkeypatch):
+    _cache(tmp_path, _roster([3, 4]))
+    chamadas = _loader(monkeypatch, ConnectionError("não devia baixar"))
+
+    df = carregar_roster(2025, 4, tmp_path)
+
+    assert chamadas == []
+    assert df["week"].max() == 4
+
+
+def test_cache_velho_e_atualizado(tmp_path, monkeypatch):
+    arquivo = _cache(tmp_path, _roster([1, 2]))
+    chamadas = _loader(monkeypatch, _roster([1, 2, 3, 4]))
+
+    df = carregar_roster(2025, 4, tmp_path)
+
+    assert len(chamadas) == 1
+    assert df["week"].max() == 4
+    assert pl.read_parquet(arquivo)["week"].max() == 4
+    assert not list(arquivo.parent.glob("*.tmp.parquet"))
+
+
+def test_semana_ausente_apos_baixar(tmp_path, monkeypatch):
+    _loader(monkeypatch, _roster([1, 2]))
+    with pytest.raises(RosterIndisponivel, match="semana 5 de 2025"):
+        carregar_roster(2025, 5, tmp_path)
+
+
+def test_sem_rede_com_cache_velho(tmp_path, monkeypatch):
+    _cache(tmp_path, _roster([1, 2]))
+    _loader(monkeypatch, ConnectionError("offline"))
+    with pytest.raises(RosterIndisponivel, match="desatualizado"):
+        carregar_roster(2025, 5, tmp_path)
