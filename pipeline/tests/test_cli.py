@@ -75,3 +75,46 @@ def test_etapa_com_erro_sugere_from(dados, foto_sintetica, modelos_falsos, monke
     r = runner.invoke(app, ["analyze", str(foto_sintetica[0]), *BASE])
     assert r.exit_code == 1
     assert "--from roster" in r.output
+
+
+def _quebrar_roster(monkeypatch):
+    from nfl_vision.stages import roster
+
+    def quebrar(*a, **k):
+        raise roster.RosterIndisponivel("sem rede")
+
+    monkeypatch.setattr(roster, "carregar_roster", quebrar)
+
+
+def test_correct_com_erro_de_etapa_sugere_from(dados, foto_sintetica, modelos_falsos, monkeypatch):
+    runner.invoke(app, ["analyze", str(foto_sintetica[0]), *BASE])
+    run_id = next(paths.runs_dir().iterdir()).name
+    _quebrar_roster(monkeypatch)
+
+    r = runner.invoke(app, ["correct", run_id, "--det", "3", "--numero", "14"])
+
+    assert r.exit_code == 1, r.output
+    assert f"--run {run_id} --from roster" in r.output
+
+
+def test_correct_apos_reprocessamento_falho(dados, foto_sintetica, modelos_falsos, monkeypatch):
+    monkeypatch.setenv("COLUMNS", "200")
+    runner.invoke(app, ["analyze", str(foto_sintetica[0]), *BASE])
+    run_id = next(paths.runs_dir().iterdir()).name
+    _quebrar_roster(monkeypatch)
+    assert runner.invoke(app, ["analyze", "--run", run_id, "--from", "jersey"]).exit_code == 1
+
+    r = runner.invoke(app, ["correct", run_id, "--det", "3", "--numero", "14"])
+
+    assert r.exit_code == 2, r.output
+    assert "análise incompleta" in r.output and "--from roster" in r.output
+
+
+def test_interrompido(dados, monkeypatch):
+    def interromper(*a, **k):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli.pipeline, "corrigir", interromper)
+    r = runner.invoke(app, ["correct", "2025-01-01-001", "--det", "1", "--numero", "2"])
+    assert r.exit_code == 130
+    assert "interrompido" in r.output

@@ -71,3 +71,43 @@ def test_corrigir_valida_entrada(dados, foto_sintetica, modelos_falsos):
         pipeline.corrigir(run_dir.name, det_id=0)
     with pytest.raises(FileNotFoundError):
         pipeline.corrigir("2000-01-01-001", det_id=0, numero=1)
+
+
+def _quebrar_roster(monkeypatch):
+    from nfl_vision.stages import roster
+
+    def quebrar(*a, **k):
+        raise roster.RosterIndisponivel("sem rede")
+
+    monkeypatch.setattr(roster, "carregar_roster", quebrar)
+
+
+def test_reprocessamento_falho_remove_saidas_finais(dados, foto_sintetica, modelos_falsos, monkeypatch):
+    from nfl_vision.runner import EtapaFalhou
+
+    run_dir, _ = pipeline.analisar(foto_sintetica[0], CTX)
+    _quebrar_roster(monkeypatch)
+    with pytest.raises(EtapaFalhou):
+        pipeline.reprocessar(run_dir.name, "jersey")
+    assert not (run_dir / "analise.json").exists()
+    assert not (run_dir / "anotada.png").exists()
+
+
+def test_corrigir_exige_analise_completa(dados, foto_sintetica, modelos_falsos, monkeypatch):
+    from nfl_vision.runner import EtapaFalhou
+
+    run_dir, _ = pipeline.analisar(foto_sintetica[0], CTX)
+    _quebrar_roster(monkeypatch)
+    with pytest.raises(EtapaFalhou):
+        pipeline.reprocessar(run_dir.name, "jersey")
+
+    esperado = f"análise incompleta; rode nfl-vision analyze --run {run_dir.name} --from roster antes"
+    with pytest.raises(ValueError, match=esperado):
+        pipeline.corrigir(run_dir.name, det_id=3, numero=14)
+    assert not (run_dir / "corrections.json").exists()
+
+
+def test_finalizar_falha_ao_gerar_png(dados, foto_sintetica, modelos_falsos, monkeypatch):
+    monkeypatch.setattr(pipeline.cv2, "imencode", lambda ext, img: (False, None))
+    with pytest.raises(RuntimeError, match="falha ao gerar anotada.png"):
+        pipeline.analisar(foto_sintetica[0], CTX)

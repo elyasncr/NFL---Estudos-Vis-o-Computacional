@@ -1,5 +1,6 @@
 """Comando `nfl-vision`."""
 
+from contextlib import contextmanager
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -7,6 +8,7 @@ import typer
 from dotenv import load_dotenv
 from PIL import Image
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from nfl_vision import paths, pipeline, teams
@@ -61,6 +63,21 @@ def _imprimir(analise: Analise, run_dir: Path) -> None:
     console.print(f"Artefatos: {run_dir}")
 
 
+@contextmanager
+def _tratando_falha_de_etapa():
+    """Erro de etapa vira mensagem com o comando para retomar; Ctrl+C sai com 130."""
+    try:
+        yield
+    except EtapaFalhou as exc:
+        console.print(f"[red]{escape(str(exc))}[/red]")
+        console.print(
+            f"Depois de resolver, rode: nfl-vision analyze --run {exc.analise_id} --from {exc.etapa}")
+        raise typer.Exit(1)
+    except KeyboardInterrupt:
+        console.print("[yellow]interrompido[/yellow]")
+        raise typer.Exit(130)
+
+
 @app.command()
 def analyze(
     foto: Optional[Path] = typer.Argument(None, help="Foto JPG ou PNG"),
@@ -71,12 +88,18 @@ def analyze(
     a_partir_de: Optional[str] = typer.Option(None, "--from", help="Etapa inicial do reprocessamento"),
 ) -> None:
     """Analisa uma foto ou reprocessa uma análise a partir de uma etapa."""
+    with _tratando_falha_de_etapa():
+        run_dir, analise = _analisar_ou_reprocessar(foto, times, temporada, semana, run, a_partir_de)
+    _imprimir(analise, run_dir)
+
+
+def _analisar_ou_reprocessar(foto, times, temporada, semana, run, a_partir_de):
     try:
         if run:
             if a_partir_de not in pipeline.NOMES_ETAPAS:
                 raise typer.BadParameter(
                     f"use uma etapa: {', '.join(pipeline.NOMES_ETAPAS)}", param_hint="--from")
-            run_dir, analise = pipeline.reprocessar(run, a_partir_de)
+            return pipeline.reprocessar(run, a_partir_de)
         else:
             if foto is None or None in times or temporada is None or semana is None:
                 raise typer.BadParameter("informe a foto, --times, --temporada e --semana")
@@ -88,14 +111,9 @@ def analyze(
                 raise typer.BadParameter(str(exc), param_hint="FOTO") from exc
             _validar_imagem(foto)
             contexto = _validar_contexto(times, temporada, semana)
-            run_dir, analise = pipeline.analisar(foto, contexto)
-    except EtapaFalhou as exc:
-        console.print(f"[red]{exc}[/red]")
-        console.print(f"Depois de resolver, rode: nfl-vision analyze --run {exc.analise_id} --from {exc.etapa}")
-        raise typer.Exit(1)
+            return pipeline.analisar(foto, contexto)
     except FileNotFoundError as exc:
         raise typer.BadParameter(str(exc), param_hint="--run") from exc
-    _imprimir(analise, run_dir)
 
 
 @app.command()
@@ -106,8 +124,9 @@ def correct(
     numero: Optional[int] = typer.Option(None, "--numero", min=0, max=99),
 ) -> None:
     """Corrige o time e/ou o número de um jogador e refaz a consulta ao roster."""
-    try:
-        analise = pipeline.corrigir(analise_id, det, time, numero)
-    except (ValueError, FileNotFoundError) as exc:
-        raise typer.BadParameter(str(exc)) from exc
+    with _tratando_falha_de_etapa():
+        try:
+            analise = pipeline.corrigir(analise_id, det, time, numero)
+        except (ValueError, FileNotFoundError) as exc:
+            raise typer.BadParameter(str(exc)) from exc
     _imprimir(analise, paths.runs_dir() / analise_id)

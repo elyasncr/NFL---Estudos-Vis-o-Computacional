@@ -12,7 +12,9 @@ from nfl_vision.config import Config
 from nfl_vision.cores import hex_para_bgr
 from nfl_vision.montagem import montar
 from nfl_vision.render import desenhar
-from nfl_vision.runner import Estado, Etapa, Runner, atualizar_manifest, gravar_json, gravar_texto
+from nfl_vision.runner import (
+    Estado, Etapa, Runner, atualizar_manifest, gravar_json, gravar_texto, ler_manifest,
+)
 from nfl_vision.schemas import (
     Analise, Contexto, Correcao, DetectOut, IngestOut, JerseyOut, RosterOut, TeamOut,
 )
@@ -69,7 +71,10 @@ def finalizar(estado: Estado) -> Analise:
     cores = {t: hex_para_bgr(teams.cores(t, times_df)[0]) for t in estado.contexto.times}
     caixas = {d.det_id: d.bbox for d in estado.saidas["detect"].deteccoes}
     anotada = desenhar(estado.imagem(), analise.jogadores, caixas, cores)
-    cv2.imencode(".png", anotada)[1].tofile(str(estado.run_dir / "anotada.png"))
+    ok, buf = cv2.imencode(".png", anotada)
+    if not ok:
+        raise RuntimeError("falha ao gerar anotada.png")
+    buf.tofile(str(estado.run_dir / "anotada.png"))
     return analise
 
 
@@ -79,9 +84,26 @@ def analisar(imagem: Path, contexto: Contexto, config: Config | None = None) -> 
     return run_dir, finalizar(runner.executar(run_dir))
 
 
+SAIDAS_FINAIS = ("analise.json", "anotada.png")
+
+
 def reprocessar(analise_id: str, a_partir_de: str) -> tuple[Path, Analise]:
     run_dir = _run_dir(analise_id)
+    for nome in SAIDAS_FINAIS:
+        (run_dir / nome).unlink(missing_ok=True)
     return run_dir, finalizar(_runner().executar(run_dir, a_partir_de))
+
+
+def _exigir_analise_completa(run_dir: Path) -> None:
+    etapas = ler_manifest(run_dir).get("etapas", {})
+    pendente = next(
+        (n for n in NOMES_ETAPAS if etapas.get(n, {}).get("status") != "ok"), None)
+    if pendente is None and not (run_dir / "analise.json").exists():
+        pendente = NOMES_ETAPAS[-1]
+    if pendente is not None:
+        raise ValueError(
+            f"análise incompleta; rode nfl-vision analyze --run {run_dir.name} "
+            f"--from {pendente} antes")
 
 
 def corrigir(analise_id: str, det_id: int, time: str | None = None,
@@ -89,6 +111,7 @@ def corrigir(analise_id: str, det_id: int, time: str | None = None,
     if time is None and numero is None:
         raise ValueError("informe --time e/ou --numero")
     run_dir = _run_dir(analise_id)
+    _exigir_analise_completa(run_dir)
     analise = Analise.model_validate_json((run_dir / "analise.json").read_text("utf-8"))
     if det_id not in {j.track_id for j in analise.jogadores}:
         raise ValueError(f"det {det_id} não é um jogador desta análise")
