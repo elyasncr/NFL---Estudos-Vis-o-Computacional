@@ -162,6 +162,7 @@ Caixa de 2 px na cor `team_color` do time, rótulo `KC 87 TE`. Jogador com time 
 - `eval detect`: mAP@0.5 da classe jogador num dataset do Roboflow Universe, via `ultralytics val`.
 - `eval jersey`: acurácia de número num dataset de números de camisa do Roboflow, entre os recortes legíveis; reporta também a taxa de `null`.
 - Datasets baixados por script com a API key do Roboflow (variável `ROBOFLOW_API_KEY`), em `data/datasets/`.
+- **Benchmark com o Roboflow:** `eval detect --benchmark roboflow` roda, nas mesmas imagens, o workflow `nfl-player-detection-7seg3` (workspace `elyas-carvalho`, via `inference-sdk`, API key no header) e calcula o mesmo mAP@0.5, gerando uma tabela "nosso detector vs. Roboflow". Só usa o split de teste, para o modelo do Roboflow não ser avaliado em imagens de treino. Só envia imagens que já vêm de datasets públicos do Roboflow, nunca mídias do usuário. É opcional e fica fora de `analyze`.
 - Acurácia de time e ponta a ponta dependem de 10–20 capturas de jogos conhecidos rotuladas pelo usuário; ficam para quando existirem.
 
 ## 10. Critério de pronto
@@ -169,4 +170,4 @@ Caixa de 2 px na cor `team_color` do time, rótulo `KC 87 TE`. Jogador com time 
 1. `nfl-vision analyze` gera `analise.json` no formato do SDD e `anotada.png` para uma foto real.
 2. `--from` e `correct` funcionam.
 3. Testes rápidos passando.
-4. Linha de base de detecção e de número medida e registrada em `docs/`. As metas do SDD (0,85 e 0,80) não são requisito desta etapa: a primeira medição calibra as metas.
+4. Linha de base de detecção e de número medida e registrada em `docs/`, junto com o benchmark do Roboflow na detecção. As metas do SDD (0,85 e 0,80) não são requisito desta etapa: a primeira medição calibra as metas.
