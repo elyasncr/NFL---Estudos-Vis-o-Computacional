@@ -159,10 +159,13 @@ Caixa de 2 px na cor `team_color` do time, rótulo `KC 87 TE`. Jogador com time 
 
 ## 9. Avaliação
 
-- `eval detect`: mAP@0.5 da classe jogador num dataset do Roboflow Universe, via `ultralytics val`.
-- `eval jersey`: acurácia de número num dataset de números de camisa do Roboflow, entre os recortes legíveis; reporta também a taxa de `null`.
-- Datasets baixados por script com a API key do Roboflow (variável `ROBOFLOW_API_KEY`), em `data/datasets/`.
-- **Benchmark com o Roboflow:** `eval detect --benchmark roboflow` roda, nas mesmas imagens, o workflow `nfl-player-detection-7seg3` (workspace `elyas-carvalho`, via `inference-sdk`, API key no header) e calcula o mesmo mAP@0.5, gerando uma tabela "nosso detector vs. Roboflow". Só usa o split de teste, para o modelo do Roboflow não ser avaliado em imagens de treino. Só envia imagens que já vêm de datasets públicos do Roboflow, nunca mídias do usuário. É opcional e fica fora de `analyze`.
+- **Dataset de detecção:** fork no workspace `elyas-carvalho` do Universe `nflplayerdetection-mjrl1/nfl-player-model` (338 imagens, classes `player`, `referee`, `ball`; CC BY 4.0, citar a fonte). A avaliação usa só o split de teste; `ball` é ignorada.
+- `eval detect`: no split de teste, mAP@0.5 da classe jogador (as detecções de `pessoa` não descartadas pelo nosso pipeline contra `player`) e a taxa de árbitros indevidamente mantidos como jogador.
+- `eval jersey`: acurácia de número num dataset de recortes de números do Roboflow Universe (outro esporte, como linha de base aproximada) até existirem recortes próprios de NFL; reporta também a taxa de `null`.
+- Datasets baixados por script com o pacote `roboflow` e a API key em `ROBOFLOW_API_KEY` (`.env`), em `data/datasets/`. O MCP do Roboflow é usado só durante o desenvolvimento, para inspecionar e exportar.
+- **Benchmarks** (opcionais, fora de `analyze`), todos no mesmo split de teste e com a mesma métrica:
+  - `--benchmark rfdetr`: RF-DETR pré-treinado COCO rodando localmente (pacote `rfdetr`), comparação de arquitetura.
+  - `--benchmark roboflow-nfl`: um modelo treinado do próprio projeto `nfl-player-model`, via inferência hospedada do Roboflow (`inference-sdk`, API key no header). Só envia imagens do split de teste do dataset público, nunca mídias do usuário. Compara "detector genérico + filtros" com "modelo treinado em NFL".
 - Acurácia de time e ponta a ponta dependem de 10–20 capturas de jogos conhecidos rotuladas pelo usuário; ficam para quando existirem.
 
 ## 10. Critério de pronto
