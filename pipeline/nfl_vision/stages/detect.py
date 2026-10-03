@@ -76,6 +76,11 @@ def detectar_pessoas(img: np.ndarray, cfg: Config) -> list[Deteccao]:
     ]
 
 
+def caminho_pesos(pesos: str) -> str:
+    """Arquivo que o ultralytics realmente carregou (pode ter baixado para outro lugar)."""
+    return getattr(_modelo(pesos), "ckpt_path", None) or pesos
+
+
 def sha256_pesos(pesos: str) -> str | None:
     caminho = Path(pesos)
     return hashlib.sha256(caminho.read_bytes()).hexdigest() if caminho.exists() else None
@@ -86,5 +91,5 @@ def executar(estado) -> DetectOut:
     cfg = estado.config
     return DetectOut(
         deteccoes=aplicar_filtros(detectar_pessoas(img, cfg), img, cfg),
-        pesos_sha256=sha256_pesos(cfg.detector_pesos),
+        pesos_sha256=sha256_pesos(caminho_pesos(cfg.detector_pesos)),
     )

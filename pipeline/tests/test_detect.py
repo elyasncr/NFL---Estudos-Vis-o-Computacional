@@ -55,3 +55,22 @@ def test_yolo_detecta_pessoas_em_imagem_real():
     dets = detectar_pessoas(carregar_imagem(ASSETS / "bus.jpg"), Config())
     assert len(dets) >= 3
     assert all(d.confianca >= 0.25 for d in dets)
+
+
+def test_hash_dos_pesos_usa_o_caminho_carregado(tmp_path, monkeypatch):
+    import hashlib
+    from types import SimpleNamespace
+
+    from nfl_vision.stages import detect
+
+    arquivo = tmp_path / "baixado" / "yolo11m.pt"
+    arquivo.parent.mkdir()
+    arquivo.write_bytes(b"pesos")
+    monkeypatch.chdir(tmp_path)  # cwd não tem yolo11m.pt
+    monkeypatch.setattr(detect, "_modelo", lambda pesos: SimpleNamespace(ckpt_path=str(arquivo)))
+    monkeypatch.setattr(detect, "detectar_pessoas", lambda img, cfg: [])
+    estado = SimpleNamespace(imagem=lambda: campo(), config=Config())
+
+    saida = detect.executar(estado)
+
+    assert saida.pesos_sha256 == hashlib.sha256(b"pesos").hexdigest()
