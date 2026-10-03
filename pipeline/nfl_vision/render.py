@@ -16,6 +16,12 @@ def rotulo(j: Jogador) -> str:
     return " ".join(partes)
 
 
+def cor_do_texto(cor: tuple[int, int, int]) -> tuple[int, int, int]:
+    """Preto sobre cores claras, branco sobre escuras (cor em BGR)."""
+    b, g, r = cor
+    return (0, 0, 0) if 0.299 * r + 0.587 * g + 0.114 * b > 150 else (255, 255, 255)
+
+
 def desenhar(img: np.ndarray, jogadores: list[Jogador], caixas: dict[int, BBox],
              cores_times: dict[str, tuple[int, int, int]]) -> np.ndarray:
     saida = img.copy()
@@ -27,6 +33,8 @@ def desenhar(img: np.ndarray, jogadores: list[Jogador], caixas: dict[int, BBox],
         texto = rotulo(j)
         (tw, th), _ = cv2.getTextSize(texto, FONTE, 0.5, 1)
         topo = max(y1 - th - 6, 0)
-        cv2.rectangle(saida, (x1, topo), (x1 + tw + 4, topo + th + 6), cor, -1)
-        cv2.putText(saida, texto, (x1 + 2, topo + th + 2), FONTE, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+        lx = max(0, min(x1, saida.shape[1] - tw - 4))  # não corta na borda direita
+        cv2.rectangle(saida, (lx, topo), (lx + tw + 4, topo + th + 6), cor, -1)
+        cv2.putText(saida, texto, (lx + 2, topo + th + 2), FONTE, 0.5, cor_do_texto(cor), 1,
+                    cv2.LINE_AA)
     return saida

@@ -140,7 +140,7 @@ Lê com Pillow, aplica `ImageOps.exif_transpose`, converte para array BGR (OpenC
 - Número sem correspondência → `motivo = numero_fora_do_roster`, campos `null`.
 
 ### `render`
-Caixa de 2 px na cor `team_color` do time, rótulo `KC 87 TE`. Jogador com time ou número desconhecido em `#6B7480` com os campos conhecidos (ex.: `KC ?`). Árbitros e descartados não são desenhados.
+Caixa de 2 px na cor `team_color` do time, rótulo `KC 87 TE` (deslocado para a esquerda quando não cabe na borda direita; texto preto se a luminância da cor for > 150, senão branco). Jogador com time ou número desconhecido em `#6B7480` com os campos conhecidos (ex.: `KC ?`). Árbitros e descartados não são desenhados.
 
 ## 7. Tratamento de erros
 
