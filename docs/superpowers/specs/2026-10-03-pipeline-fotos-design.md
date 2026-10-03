@@ -32,19 +32,12 @@ nfl-vision/                 (raiz do repositório)
   pipeline/
     pyproject.toml
     nfl_vision/
-      schemas.py            # contratos Pydantic entre etapas
-      runner.py             # executa etapas, grava artefatos, retoma com --from
-      config.py             # parâmetros; gravados em cada análise
-      cli.py                # comando `nfl-vision`
-      render.py             # imagem anotada
-      teams.py              # siglas e cores oficiais (nflverse)
-      stages/
-        ingest.py  detect.py  team.py  jersey.py  roster.py
-      eval/
-        detect.py  jersey.py
+      schemas.py  config.py  paths.py  cores.py  teams.py
+      runner.py  render.py  montagem.py  pipeline.py  cli.py
+      stages/  ingest.py  detect.py  team.py  jersey.py  roster.py
+      eval/    metricas.py  datasets.py  preditores.py  detect.py  jersey.py
+    tests/                  # testes do pipeline (rápidos e @model)
   notebooks/                # exploração e avaliação; importam o pacote
-  tests/
-    fixtures/               # imagens sintéticas, parquet de roster
   data/                     # ignorado pelo git
     runs/<analise_id>/
     cache/
@@ -96,6 +89,7 @@ nfl-vision analyze --run <analise_id> --from <etapa>
 nfl-vision correct <analise_id> --det <id> [--time KC] [--numero 87]
 nfl-vision eval detect --dataset <pasta>
 nfl-vision eval jersey --dataset <pasta>
+nfl-vision eval baixar --workspace <ws> --projeto <slug> --versao <n> --formato <yolov11|folder>
 ```
 
 `analyze` imprime a tabela de jogadores e o caminho dos artefatos. `--from` reaproveita os artefatos anteriores à etapa indicada e refaz dela em diante.
