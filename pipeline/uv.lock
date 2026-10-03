@@ -938,7 +938,7 @@ source = { editable = "." }
 dependencies = [
     { name = "nflreadpy" },
     { name = "numpy" },
-    { name = "opencv-python" },
+    { name = "opencv-contrib-python" },
     { name = "pillow" },
     { name = "polars" },
     { name = "pydantic" },
@@ -974,7 +974,7 @@ requires-dist = [
     { name = "inference-sdk", marker = "extra == 'eval'", specifier = ">=0.50" },
     { name = "nflreadpy", specifier = ">=0.1" },
     { name = "numpy", specifier = ">=1.26" },
-    { name = "opencv-python", specifier = ">=4.10" },
+    { name = "opencv-contrib-python", specifier = ">=4.10" },
     { name = "paddleocr", marker = "extra == 'ocr'", specifier = ">=3.0" },
     { name = "paddlepaddle", marker = "extra == 'ocr'", specifier = ">=3.0" },
     { name = "pillow", specifier = ">=10.4" },
