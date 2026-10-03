@@ -106,11 +106,19 @@ class Runner:
         estado = self.carregar_estado(run_dir)
         manifest = ler_manifest(run_dir)
 
+        for etapa in self.etapas[inicio:]:
+            manifest["etapas"].pop(etapa.nome, None)
+            arquivo = run_dir / f"{etapa.nome}.json"
+            if arquivo.exists():
+                arquivo.unlink()
+        _gravar_json(run_dir / "manifest.json", manifest)
+
         for i, etapa in enumerate(self.etapas):
             arquivo = run_dir / f"{etapa.nome}.json"
             if i < inicio:
-                if not arquivo.exists():
-                    raise EtapaFalhou(etapa.nome, "artefato ausente", run_dir.name)
+                status = manifest["etapas"].get(etapa.nome, {}).get("status")
+                if not arquivo.exists() or status != "ok":
+                    raise EtapaFalhou(etapa.nome, "artefato ausente ou inválido", run_dir.name)
                 estado.saidas[etapa.nome] = etapa.saida.model_validate_json(arquivo.read_text("utf-8"))
                 continue
 
