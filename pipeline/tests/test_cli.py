@@ -130,3 +130,19 @@ def test_from_detect_avisa_correcoes_arquivadas(dados, foto_sintetica, modelos_f
 
     assert r.exit_code == 0, r.output
     assert "correções anteriores arquivadas em" in r.output
+
+
+def test_combinacoes_invalidas_de_opcoes(dados, tmp_path, monkeypatch):
+    monkeypatch.setenv("COLUMNS", "200")
+    foto = tmp_path / "f.jpg"
+    Image.new("RGB", (32, 32), (40, 140, 40)).save(foto, "JPEG")
+
+    casos = [
+        (["analyze", str(foto), *BASE, "--from", "jersey"], "--from exige --run"),
+        (["analyze", str(foto), "--run", "x", "--from", "jersey"], "FOTO"),
+        (["analyze", "--run", "x"], "--run exige --from <etapa>"),
+    ]
+    for args, trecho in casos:
+        r = runner.invoke(app, args)
+        assert r.exit_code == 2, (args, r.output)
+        assert trecho in r.output, (args, r.output)

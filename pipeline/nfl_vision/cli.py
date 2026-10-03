@@ -98,6 +98,12 @@ def analyze(
 
 
 def _analisar_ou_reprocessar(foto, times, temporada, semana, run, a_partir_de):
+    if a_partir_de is not None and not run:
+        raise typer.BadParameter("--from exige --run <id>", param_hint="--from")
+    if run and foto is not None:
+        raise typer.BadParameter("não informe a foto junto com --run", param_hint="FOTO")
+    if run and a_partir_de is None:
+        raise typer.BadParameter("--run exige --from <etapa>", param_hint="--run")
     try:
         if run:
             if a_partir_de not in pipeline.NOMES_ETAPAS:
