@@ -4,10 +4,17 @@ from pathlib import Path
 
 import polars as pl
 
-ALIASES = {"LAR": "LA", "JAC": "JAX", "WSH": "WAS", "LVR": "LV"}
+ALIASES = {
+    "LAR": "LA", "JAC": "JAX", "WSH": "WAS", "LVR": "LV",
+    "OAK": "LV", "SD": "LAC", "STL": "LA",
+}
 
 
 class TimeDesconhecido(ValueError):
+    pass
+
+
+class TimesIndisponiveis(RuntimeError):
     pass
 
 
@@ -22,7 +29,12 @@ def carregar_times(cache_dir: Path) -> pl.DataFrame:
         return pl.read_parquet(arquivo)
     import nflreadpy as nfl
 
-    df = nfl.load_teams().select("team_abbr", "team_color", "team_color2")
+    try:
+        df = nfl.load_teams().select("team_abbr", "team_color", "team_color2")
+    except Exception as exc:
+        raise TimesIndisponiveis(
+            f"times indisponíveis (sem cache em {arquivo} e sem rede?): {exc}"
+        ) from exc
     cache_dir.mkdir(parents=True, exist_ok=True)
     df.write_parquet(arquivo)
     return df
