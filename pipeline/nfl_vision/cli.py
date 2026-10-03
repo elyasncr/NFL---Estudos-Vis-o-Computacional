@@ -1,0 +1,113 @@
+"""Comando `nfl-vision`."""
+
+from pathlib import Path
+from typing import List, Optional, Tuple
+
+import typer
+from dotenv import load_dotenv
+from PIL import Image
+from rich.console import Console
+from rich.table import Table
+
+from nfl_vision import paths, pipeline, teams
+from nfl_vision.runner import EtapaFalhou
+from nfl_vision.schemas import Analise, Contexto
+from nfl_vision.stages import ingest
+
+app = typer.Typer(help="Identificação de jogadores da NFL em fotos.", no_args_is_help=True)
+eval_app = typer.Typer(help="Avaliação de detecção e de leitura de número.", no_args_is_help=True)
+app.add_typer(eval_app, name="eval")
+console = Console()
+
+
+@app.callback()
+def _inicio() -> None:
+    load_dotenv()
+
+
+def _validar_contexto(times: Tuple[str, str], temporada: int, semana: int) -> Contexto:
+    if temporada < 2002:
+        raise typer.BadParameter("temporada deve ser 2002 ou posterior", param_hint="--temporada")
+    if not 1 <= semana <= 22:
+        raise typer.BadParameter("semana deve estar entre 1 e 22", param_hint="--semana")
+    try:
+        times_df = teams.carregar_times(paths.cache_dir())
+        a, b = (teams.validar(t, times_df) for t in times)
+    except (teams.TimeDesconhecido, teams.TimesIndisponiveis) as exc:
+        raise typer.BadParameter(str(exc), param_hint="--times") from exc
+    if a == b:
+        raise typer.BadParameter("os dois times precisam ser diferentes", param_hint="--times")
+    return Contexto(temporada=temporada, semana=semana, times=(a, b))
+
+
+def _validar_imagem(foto: Path) -> None:
+    try:
+        with Image.open(foto) as img:
+            img.verify()
+    except Exception as exc:
+        raise typer.BadParameter(f"imagem inválida ou corrompida: {foto}", param_hint="FOTO") from exc
+
+
+def _imprimir(analise: Analise, run_dir: Path) -> None:
+    tabela = Table(title=f"Análise {analise.analise_id}")
+    for coluna in ("det", "time", "nº", "conf.", "pos.", "nome"):
+        tabela.add_column(coluna)
+    for j in analise.jogadores:
+        tabela.add_row(
+            str(j.track_id), j.time or "?", "?" if j.numero is None else str(j.numero),
+            f"{j.confianca_numero:.2f}", j.posicao or "", j.nome or "desconhecido",
+        )
+    console.print(tabela)
+    console.print(f"Artefatos: {run_dir}")
+
+
+@app.command()
+def analyze(
+    foto: Optional[Path] = typer.Argument(None, help="Foto JPG ou PNG"),
+    times: Tuple[str, str] = typer.Option((None, None), "--times", help="Siglas dos dois times"),
+    temporada: Optional[int] = typer.Option(None, "--temporada"),
+    semana: Optional[int] = typer.Option(None, "--semana"),
+    run: Optional[str] = typer.Option(None, "--run", help="Reprocessar uma análise existente"),
+    a_partir_de: Optional[str] = typer.Option(None, "--from", help="Etapa inicial do reprocessamento"),
+) -> None:
+    """Analisa uma foto ou reprocessa uma análise a partir de uma etapa."""
+    try:
+        if run:
+            if a_partir_de not in pipeline.NOMES_ETAPAS:
+                raise typer.BadParameter(
+                    f"use uma etapa: {', '.join(pipeline.NOMES_ETAPAS)}", param_hint="--from")
+            run_dir, analise = pipeline.reprocessar(run, a_partir_de)
+        else:
+            if foto is None or None in times or temporada is None or semana is None:
+                raise typer.BadParameter("informe a foto, --times, --temporada e --semana")
+            if not foto.exists():
+                raise typer.BadParameter(f"arquivo não encontrado: {foto}", param_hint="FOTO")
+            try:
+                ingest.validar_formato(foto)
+            except ingest.FormatoNaoSuportado as exc:
+                raise typer.BadParameter(str(exc), param_hint="FOTO") from exc
+            _validar_imagem(foto)
+            contexto = _validar_contexto(times, temporada, semana)
+            run_dir, analise = pipeline.analisar(foto, contexto)
+    except EtapaFalhou as exc:
+        console.print(f"[red]{exc}[/red]")
+        console.print(f"Depois de resolver, rode: nfl-vision analyze --run {exc.analise_id} --from {exc.etapa}")
+        raise typer.Exit(1)
+    except FileNotFoundError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--run") from exc
+    _imprimir(analise, run_dir)
+
+
+@app.command()
+def correct(
+    analise_id: str = typer.Argument(..., help="ID da análise, ex.: 2026-10-03-001"),
+    det: int = typer.Option(..., "--det", help="det_id (track_id) do jogador"),
+    time: Optional[str] = typer.Option(None, "--time"),
+    numero: Optional[int] = typer.Option(None, "--numero", min=0, max=99),
+) -> None:
+    """Corrige o time e/ou o número de um jogador e refaz a consulta ao roster."""
+    try:
+        analise = pipeline.corrigir(analise_id, det, time, numero)
+    except (ValueError, FileNotFoundError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    _imprimir(analise, paths.runs_dir() / analise_id)
