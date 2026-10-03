@@ -149,3 +149,21 @@ def test_outlier_fica_sem_time_e_vermelhos_ficam_com_kc():
     assert [t.time for t in itens[:5]] == ["KC"] * 5
     assert all(t.confianca >= 0.8 for t in itens[:5])
     assert itens[5].confianca < 0.60 and itens[5].time is None
+
+
+def test_cor_dominante_amostra_muitos_pixels(monkeypatch):
+    from nfl_vision.cores import delta_e
+    from nfl_vision.stages import team
+
+    px = np.array([VERMELHO] * 70_000 + [AZUL] * 30_000)
+    tamanhos = []
+    fit_original = team.KMeans.fit
+
+    def fit_espiao(self, x, *a, **k):
+        tamanhos.append(len(x))
+        return fit_original(self, x, *a, **k)
+
+    monkeypatch.setattr(team.KMeans, "fit", fit_espiao)
+
+    assert delta_e(team.cor_dominante(px), VERMELHO) < 1
+    assert tamanhos == [3000]

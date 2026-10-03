@@ -11,6 +11,7 @@ from nfl_vision.cores import bgr_para_lab, delta_e, hex_para_lab, mascara_gramad
 from nfl_vision.schemas import Deteccao, TeamOut, TimeDet
 
 MIN_PIXELS = 50
+MAX_PIXELS_KMEANS = 3000
 
 
 def recorte_tronco(img: np.ndarray, bbox) -> np.ndarray:
@@ -59,7 +60,14 @@ def _distintos(pontos: np.ndarray) -> int:
     return len(np.unique(pontos.round(2), axis=0))
 
 
+def amostrar(lab_px: np.ndarray, n: int = MAX_PIXELS_KMEANS) -> np.ndarray:
+    if len(lab_px) <= n:
+        return lab_px
+    return lab_px[np.random.default_rng(0).choice(len(lab_px), n, replace=False)]
+
+
 def cor_dominante(lab_px: np.ndarray) -> np.ndarray:
+    lab_px = amostrar(lab_px)
     k = min(3, _distintos(lab_px))
     km = KMeans(n_clusters=k, n_init=4, random_state=0).fit(lab_px)
     return km.cluster_centers_[np.bincount(km.labels_).argmax()]
