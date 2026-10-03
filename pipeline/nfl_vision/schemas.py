@@ -1,17 +1,23 @@
 """Contratos de dados entre as etapas do pipeline e a saída final."""
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 BBox = tuple[float, float, float, float]  # x1, y1, x2, y2 em pixels
 Lab = tuple[float, float, float]
 
 
 class Contexto(BaseModel):
-    temporada: int
-    semana: int
+    temporada: int = Field(ge=2002)
+    semana: int = Field(ge=1, le=22)
     times: tuple[str, str]
+
+    @model_validator(mode="after")
+    def _times_diferentes(self) -> "Contexto":
+        if self.times[0] == self.times[1]:
+            raise ValueError("os dois times do contexto devem ser diferentes")
+        return self
 
 
 class IngestOut(BaseModel):
@@ -83,7 +89,7 @@ class Correcao(BaseModel):
 class Jogador(BaseModel):
     track_id: int
     time: str | None
-    numero: int | None
+    numero: Annotated[int, Field(ge=0, le=99)] | None
     confianca_numero: float
     posicao: str | None
     nome: str | None
