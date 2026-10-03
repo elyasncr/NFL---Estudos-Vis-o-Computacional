@@ -1,3 +1,4 @@
+import cv2
 import numpy as np
 
 from nfl_vision.config import Config
@@ -18,11 +19,33 @@ AZUL = hex_para_lab("#00338D")
 BRANCO = hex_para_lab("#FFFFFF")
 
 
+def _listrado(h=48, w=36, largura=4):
+    img = np.zeros((h, w, 3), np.uint8)
+    for x in range(w):
+        if (x // largura) % 2:
+            img[:, x] = 255
+    return img
+
+
 def test_listras_pretas_e_brancas_sao_arbitro():
-    listrado = np.array([[0, 0, 0], [255, 255, 255]] * 50, np.uint8)
-    liso = np.array([[55, 24, 227]] * 100, np.uint8)
-    assert eh_arbitro(bgr_para_lab(listrado))
-    assert not eh_arbitro(bgr_para_lab(liso))
+    assert eh_arbitro(_listrado())
+    assert not eh_arbitro(np.full((48, 36, 3), VERMELHO_KC, np.uint8))
+
+
+def test_camisa_branca_com_numero_preto_nao_e_arbitro():
+    img = np.full((48, 36, 3), 255, np.uint8)
+    img[10:38, 7:29] = 0  # bloco do número: ~36% da área
+    assert not eh_arbitro(img)
+
+
+def test_camisa_preta_com_numero_branco_nao_e_arbitro():
+    img = np.zeros((60, 60, 3), np.uint8)
+    cv2.putText(img, "88", (2, 48), cv2.FONT_HERSHEY_SIMPLEX, 1.6, (255, 255, 255), 6)
+    assert not eh_arbitro(img)
+
+
+def test_camisa_lisa_nao_e_arbitro():
+    assert not eh_arbitro(np.full((48, 36, 3), VERMELHO_KC, np.uint8))
 
 
 def test_eh_branco():

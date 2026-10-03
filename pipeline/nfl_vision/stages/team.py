@@ -32,9 +32,25 @@ def pixels_uteis(recorte: np.ndarray, cfg: Config) -> np.ndarray:
     return bgr_para_lab(recorte[~gramado])
 
 
-def eh_arbitro(lab_px: np.ndarray) -> bool:
-    luz = lab_px[:, 0]
-    return bool((luz < 30).mean() >= 0.25 and (luz > 80).mean() >= 0.25)
+def _rotulos_colunas(recorte_bgr: np.ndarray) -> np.ndarray:
+    """Por coluna: 1 = escura (L < 30), 2 = clara (L > 80), 0 = mista; limiar de 70%."""
+    luz = bgr_para_lab(recorte_bgr.reshape(-1, 3))[:, 0].reshape(recorte_bgr.shape[:2])
+    escura = (luz < 30).mean(axis=0) >= 0.7
+    clara = (luz > 80).mean(axis=0) >= 0.7
+    return np.where(escura, 1, np.where(clara, 2, 0))
+
+
+def eh_arbitro(recorte_bgr: np.ndarray) -> bool:
+    """Listras verticais pretas e brancas: colunas puras que se alternam."""
+    if recorte_bgr.size == 0:
+        return False
+    rotulos = _rotulos_colunas(recorte_bgr)
+    puras = rotulos[rotulos > 0]
+    if len(puras) < 0.7 * len(rotulos):
+        return False
+    if (rotulos == 1).mean() < 0.25 or (rotulos == 2).mean() < 0.25:
+        return False
+    return int((puras[1:] != puras[:-1]).sum()) >= 4
 
 
 def _distintos(pontos: np.ndarray) -> int:
@@ -103,10 +119,11 @@ def classificar(img: np.ndarray, deteccoes: list[Deteccao],
     for d in deteccoes:
         if d.descartado:
             continue
-        px = pixels_uteis(recorte_tronco(img, d.bbox), cfg)
+        recorte = recorte_tronco(img, d.bbox)
+        px = pixels_uteis(recorte, cfg)
         if len(px) < MIN_PIXELS:
             itens[d.det_id] = TimeDet(det_id=d.det_id, time=None, confianca=0.0)
-        elif eh_arbitro(px):
+        elif eh_arbitro(recorte):
             itens[d.det_id] = TimeDet(det_id=d.det_id, time=None, confianca=1.0, arbitro=True)
         else:
             candidatos.append((d.det_id, cor_dominante(px)))
