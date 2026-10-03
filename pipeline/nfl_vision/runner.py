@@ -81,25 +81,21 @@ def ler_manifest(run_dir: Path) -> dict:
     return json.loads((run_dir / "manifest.json").read_text("utf-8"))
 
 
-def _gravar_texto(caminho: Path, texto: str) -> None:
+def gravar_texto(caminho: Path, texto: str) -> None:
     tmp = caminho.with_name(caminho.name + ".tmp")
     tmp.write_text(texto, encoding="utf-8")
     os.replace(tmp, caminho)
 
 
-def _gravar_json(caminho: Path, dados) -> None:
-    _gravar_texto(caminho, json.dumps(dados, indent=2, ensure_ascii=False))
-
-
-gravar_texto = _gravar_texto
-gravar_json = _gravar_json
+def gravar_json(caminho: Path, dados) -> None:
+    gravar_texto(caminho, json.dumps(dados, indent=2, ensure_ascii=False))
 
 
 def atualizar_manifest(run_dir: Path, funcao: Callable[[dict], None]) -> dict:
     """Lê o manifest, aplica `funcao` (que o altera no lugar) e grava de forma atômica."""
     manifest = ler_manifest(run_dir)
     funcao(manifest)
-    _gravar_json(run_dir / "manifest.json", manifest)
+    gravar_json(run_dir / "manifest.json", manifest)
     return manifest
 
 
@@ -113,7 +109,7 @@ class Runner:
         run_dir = self.runs_dir / proximo_id(self.runs_dir)
         run_dir.mkdir(parents=True)
         shutil.copy2(imagem, run_dir / f"input{imagem.suffix.lower()}")
-        _gravar_json(run_dir / "manifest.json", {
+        gravar_json(run_dir / "manifest.json", {
             "analise_id": run_dir.name,
             "contexto": contexto.model_dump(mode="json"),
             "config": config.model_dump(mode="json"),
@@ -144,7 +140,7 @@ class Runner:
             arquivo = run_dir / f"{etapa.nome}.json"
             if arquivo.exists():
                 arquivo.unlink()
-        _gravar_json(run_dir / "manifest.json", manifest)
+        gravar_json(run_dir / "manifest.json", manifest)
 
         for i, etapa in enumerate(self.etapas):
             arquivo = run_dir / f"{etapa.nome}.json"
@@ -176,15 +172,15 @@ class Runner:
                     "status": "erro", "mensagem": mensagem,
                     "duracao_s": round(time.perf_counter() - t0, 3),
                 }
-                _gravar_json(run_dir / "manifest.json", manifest)
+                gravar_json(run_dir / "manifest.json", manifest)
                 raise EtapaFalhou(etapa.nome, mensagem, run_dir.name) from exc
 
-            _gravar_texto(arquivo, saida.model_dump_json(indent=2))
+            gravar_texto(arquivo, saida.model_dump_json(indent=2))
             estado.saidas[etapa.nome] = saida
             manifest["etapas"][etapa.nome] = {
                 "status": "ok", "mensagem": None,
                 "duracao_s": round(time.perf_counter() - t0, 3),
             }
-            _gravar_json(run_dir / "manifest.json", manifest)
+            gravar_json(run_dir / "manifest.json", manifest)
 
         return estado
