@@ -13,6 +13,7 @@ from rich.table import Table
 
 from nfl_vision import paths, pipeline, teams
 from nfl_vision.config import DETECTORES, Config
+from nfl_vision.cores import hex_para_lab
 from nfl_vision.runner import EtapaFalhou, gravar_json
 from nfl_vision.schemas import Analise, Contexto
 from nfl_vision.stages import ingest
@@ -213,6 +214,12 @@ def _arquivo_avaliacao(nome: str) -> Path:
     return destino / f"{nome}-{datetime.now():%Y%m%d-%H%M%S}.json"
 
 
+def _salvar_avaliacao(nome: str, dados: dict) -> Path:
+    arquivo = _arquivo_avaliacao(nome)
+    gravar_json(arquivo, dados)
+    return arquivo
+
+
 def _pasta_de_split_ausente(dataset: Path, pasta: Path) -> str:
     from nfl_vision.eval.datasets import splits_existentes
 
@@ -394,6 +401,66 @@ def eval_jersey_cmd(
     gravar_json(arquivo, {
         "dataset": str(dataset), "split": split, "limiar": cfg.limiar_numero,
         "altura_min": cfg.numero_altura_min, "versao": pipeline._versao("nfl-vision"), "resultado": r,
+    })
+    console.print(f"Resultados: {arquivo}")
+
+
+@eval_app.command("time")
+def eval_time_cmd(
+    gabarito: Path = typer.Option(
+        ..., "--gabarito", help="JSON rotulado à mão (ver data/avaliacoes/time-gabarito-*.json)"),
+    dataset: Path = typer.Option(..., "--dataset", help="Pasta do dataset em formato YOLO"),
+    split: str = typer.Option("test", "--split", help=AJUDA_SPLIT),
+    detector_tipo: Optional[str] = typer.Option(
+        None, "--detector-tipo", help=AJUDA_DETECTOR_TIPO),
+) -> None:
+    """Acurácia e cobertura do time (cor do tronco) contra um gabarito rotulado à mão."""
+    from nfl_vision.eval import time as avaliacao
+    from nfl_vision.stages.detect import rotulo_detector
+
+    _validar_detector(detector_tipo, None, "--detector-tipo")
+    if not gabarito.is_file():
+        raise typer.BadParameter(f"arquivo não encontrado: {gabarito}", param_hint="--gabarito")
+    try:
+        gab = avaliacao.carregar_gabarito(gabarito)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--gabarito") from exc
+
+    pasta_imagens = dataset / split / "images"
+    if not pasta_imagens.is_dir():
+        raise typer.BadParameter(_pasta_de_split_ausente(dataset, pasta_imagens),
+                                 param_hint="--split")
+
+    ajustes = _ajustes_do_detector(detector_tipo, None)
+    cfg = Config(**ajustes) if ajustes else Config()
+
+    try:
+        times_df = teams.carregar_times(paths.cache_dir())
+        paletas = {t: [hex_para_lab(c) for c in teams.cores(t, times_df)] for t in gab.times}
+    except (teams.TimeDesconhecido, teams.TimesIndisponiveis) as exc:
+        raise typer.BadParameter(str(exc), param_hint="--gabarito") from exc
+
+    resultado = avaliacao.avaliar(gab, pasta_imagens, paletas, cfg)
+
+    tabela = Table(title=f"Time — {gabarito.name} ({gab.times[0]}×{gab.times[1]})")
+    for coluna in ("detector", "acurácia", "cobertura", "acertos", "erros", "nulos",
+                  "sem detecção"):
+        tabela.add_column(coluna)
+    tabela.add_row(
+        rotulo_detector(cfg),
+        "—" if resultado["acuracia"] is None else f"{resultado['acuracia']:.3f}",
+        "—" if resultado["cobertura"] is None else f"{resultado['cobertura']:.3f}",
+        str(resultado["acertos"]), str(resultado["erros"]), str(resultado["nulos"]),
+        str(resultado["sem_deteccao"]),
+    )
+    console.print(tabela)
+
+    arquivo = _salvar_avaliacao("time", {
+        "gabarito": str(gabarito), "dataset": str(dataset), "split": split,
+        "times": list(gab.times), "config": cfg.model_dump(mode="json"),
+        "detector": rotulo_detector(cfg), "limiar_time": cfg.limiar_time,
+        "tronco_altura": list(cfg.tronco_altura), "tronco_largura": list(cfg.tronco_largura),
+        "versao": pipeline._versao("nfl-vision"), "resultado": resultado,
     })
     console.print(f"Resultados: {arquivo}")
 

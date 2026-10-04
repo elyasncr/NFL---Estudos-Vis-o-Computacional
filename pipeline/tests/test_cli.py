@@ -227,7 +227,7 @@ def test_eval_baixar_erro_de_rede_reporta_tipo_e_mensagem(dados, tmp_path, monke
 def test_eval_help_lista_comandos():
     r = runner.invoke(app, ["eval", "--help"])
     assert r.exit_code == 0, r.output
-    assert all(c in r.output for c in ("baixar", "detect", "jersey"))
+    assert all(c in r.output for c in ("baixar", "detect", "jersey", "time"))
 
 
 def test_eval_detect_benchmark_invalido(dados, tmp_path, monkeypatch):
@@ -645,3 +645,115 @@ def test_help_menciona_detector_tipo():
         assert "--detector-tipo" in r.output
     r = runner.invoke(app, ["eval", "detect", "--help"], env={"COLUMNS": "300"})
     assert "--resolucao" in r.output
+
+
+def _dataset_imagens(raiz, nomes, split="test"):
+    import cv2
+
+    pasta = raiz / split / "images"
+    pasta.mkdir(parents=True)
+    for nome, img in nomes.items():
+        cv2.imwrite(str(pasta / nome), img)
+    return raiz
+
+
+def _gabarito_json(caminho, times, caixas):
+    import json
+
+    caminho.write_text(json.dumps({"times": list(times), "caixas": caixas}), encoding="utf-8")
+    return caminho
+
+
+def _detector_falso_time(monkeypatch, caixas):
+    from nfl_vision.eval import time as eval_time
+    from nfl_vision.schemas import Deteccao
+
+    def detectar(imagem, cfg):
+        return [Deteccao(det_id=i, bbox=b, confianca=0.9) for i, b in enumerate(caixas)]
+
+    monkeypatch.setattr(eval_time, "detectar_pessoas", detectar)
+
+
+def test_eval_time_grava_resultado(dados, tmp_path, monkeypatch):
+    from nfl_vision.config import Config
+    from sintetico import AZUL_BUF, VERMELHO_KC, campo, jogador
+
+    monkeypatch.setenv("COLUMNS", "300")
+    img = campo()
+    c0 = jogador(img, 100, 300, VERMELHO_KC)
+    c1 = jogador(img, 400, 300, AZUL_BUF)
+    ds = _dataset_imagens(tmp_path / "ds", {"a.jpg": img})
+    gabarito = _gabarito_json(tmp_path / "gabarito.json", ("KC", "BUF"), [
+        {"imagem": "a.jpg", "bbox": list(c0), "time": "KC"},
+        {"imagem": "a.jpg", "bbox": list(c1), "time": "BUF"},
+    ])
+    _detector_falso_time(monkeypatch, [c0, c1])
+
+    r = runner.invoke(app, ["eval", "time", "--gabarito", str(gabarito), "--dataset", str(ds)])
+
+    assert r.exit_code == 0, r.output
+    salvo = _ler_avaliacao("time")
+    assert salvo["gabarito"] == str(gabarito)
+    assert salvo["dataset"] == str(ds) and salvo["split"] == "test"
+    assert salvo["times"] == ["KC", "BUF"]
+    assert salvo["limiar_time"] == Config().limiar_time
+    assert salvo["tronco_altura"] == list(Config().tronco_altura)
+    assert salvo["tronco_largura"] == list(Config().tronco_largura)
+    assert salvo["detector"]
+    assert salvo["versao"]
+    assert salvo["resultado"] == {
+        "acuracia": 1.0, "cobertura": 1.0, "acertos": 2, "erros": 0, "nulos": 0, "sem_deteccao": 0,
+    }
+
+
+def test_eval_time_detector_tipo_yolo_vai_na_config_gravada(dados, tmp_path, monkeypatch):
+    from sintetico import VERMELHO_KC, campo, jogador
+
+    monkeypatch.setenv("COLUMNS", "300")
+    img = campo()
+    c0 = jogador(img, 100, 300, VERMELHO_KC)
+    ds = _dataset_imagens(tmp_path / "ds", {"a.jpg": img})
+    gabarito = _gabarito_json(tmp_path / "gabarito.json", ("KC", "BUF"), [
+        {"imagem": "a.jpg", "bbox": list(c0), "time": "KC"},
+    ])
+    _detector_falso_time(monkeypatch, [c0])
+
+    r = runner.invoke(app, ["eval", "time", "--gabarito", str(gabarito), "--dataset", str(ds),
+                            "--detector-tipo", "yolo"])
+
+    assert r.exit_code == 0, r.output
+    salvo = _ler_avaliacao("time")
+    assert salvo["config"]["detector_tipo"] == "yolo"
+
+
+def test_eval_time_erros_de_entrada(dados, tmp_path, monkeypatch):
+    from sintetico import campo
+
+    monkeypatch.setenv("COLUMNS", "300")
+    ds = _dataset_imagens(tmp_path / "ds", {"a.jpg": campo()})
+    so_valid = _dataset_imagens(tmp_path / "so_valid", {"a.jpg": campo()}, split="valid")
+    gabarito_ok = _gabarito_json(tmp_path / "ok.json", ("KC", "BUF"), [
+        {"imagem": "a.jpg", "bbox": [0.0, 0.0, 1.0, 1.0], "time": "KC"},
+    ])
+    gabarito_mal_formado = tmp_path / "mal.json"
+    gabarito_mal_formado.write_text("{}", encoding="utf-8")
+    gabarito_json_invalido = tmp_path / "invalido.json"
+    gabarito_json_invalido.write_text("não é json", encoding="utf-8")
+    gabarito_time_desconhecido = _gabarito_json(tmp_path / "zzz.json", ("KC", "ZZZ"), [
+        {"imagem": "a.jpg", "bbox": [0.0, 0.0, 1.0, 1.0], "time": "KC"},
+    ])
+
+    casos = [
+        (["--gabarito", str(tmp_path / "nao.json"), "--dataset", str(ds)], "não encontrado"),
+        (["--gabarito", str(gabarito_json_invalido), "--dataset", str(ds)], "JSON"),
+        (["--gabarito", str(gabarito_mal_formado), "--dataset", str(ds)], "times"),
+        (["--gabarito", str(gabarito_ok), "--dataset", str(tmp_path / "nada")], "não encontrada"),
+        (["--gabarito", str(gabarito_ok), "--dataset", str(so_valid), "--split", "val"], "valid"),
+        (["--gabarito", str(gabarito_time_desconhecido), "--dataset", str(ds)], "ZZZ"),
+        (["--gabarito", str(gabarito_ok), "--dataset", str(ds), "--detector-tipo", "detr"],
+         "use rfdetr ou yolo"),
+    ]
+    for args, trecho in casos:
+        r = runner.invoke(app, ["eval", "time", *args])
+        assert r.exit_code == 2, (args, r.output)
+        assert trecho in r.output, (args, r.output)
