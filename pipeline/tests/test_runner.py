@@ -275,6 +275,60 @@ def test_saida_com_tipo_errado_falha_como_etapa(tmp_path, foto):
     assert manifest["etapas"]["a"]["status"] == "erro"
 
 
+def test_config_efetiva_grava_campo_ausente_e_guarda_original(tmp_path, foto):
+    chamadas = []
+    runner = Runner(_etapas(chamadas), tmp_path / "runs")
+    run_dir = runner.nova_analise(foto, CTX, Config(), {})
+    runner.executar(run_dir)
+
+    manifest = ler_manifest(run_dir)
+    antigo = dict(manifest["config"])
+    del antigo["detector_conf"]
+    manifest["config"] = antigo
+    (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    estado = runner.executar(run_dir, a_partir_de="b")
+
+    assert estado.config.detector_conf == Config().detector_conf
+    novo = ler_manifest(run_dir)
+    assert novo["config"]["detector_conf"] == Config().detector_conf
+    assert novo["config_original"] == antigo
+
+
+def test_config_original_nao_e_sobrescrita_em_execucoes_seguintes(tmp_path, foto):
+    chamadas = []
+    runner = Runner(_etapas(chamadas), tmp_path / "runs")
+    run_dir = runner.nova_analise(foto, CTX, Config(), {})
+    runner.executar(run_dir)
+
+    manifest = ler_manifest(run_dir)
+    antigo = dict(manifest["config"])
+    del antigo["detector_conf"]
+    manifest["config"] = antigo
+    (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    runner.executar(run_dir, a_partir_de="b")
+
+    runner.executar(run_dir, a_partir_de="b")  # segunda retomada: config já é a efetiva
+
+    novo = ler_manifest(run_dir)
+    assert novo["config_original"] == antigo
+
+
+def test_config_com_campo_extra_desconhecido_carrega_sem_erro(tmp_path, foto):
+    chamadas = []
+    runner = Runner(_etapas(chamadas), tmp_path / "runs")
+    run_dir = runner.nova_analise(foto, CTX, Config(), {})
+    runner.executar(run_dir)
+
+    manifest = ler_manifest(run_dir)
+    manifest["config"]["campo_removido_no_futuro"] = "valor antigo"
+    (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    estado = runner.executar(run_dir, a_partir_de="b")
+
+    assert estado.saidas["b"].valor == 2
+
+
 def test_le_correcoes(tmp_path, foto):
     runner = Runner(_etapas([]), tmp_path / "runs")
     run_dir = runner.nova_analise(foto, CTX, Config(), {})

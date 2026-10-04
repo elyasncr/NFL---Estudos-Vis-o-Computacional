@@ -99,6 +99,19 @@ def atualizar_manifest(run_dir: Path, funcao: Callable[[dict], None]) -> dict:
     return manifest
 
 
+def _atualizar_config_efetiva(manifest: dict, config: Config) -> None:
+    """Se a config carregada do manifest (campo ausente ganhou padrão, campo
+    desconhecido foi ignorado) difere do que está gravado, grava a config
+    efetivamente usada em `config` e guarda a versão antiga em
+    `config_original` — só na primeira vez que isso acontece.
+    """
+    efetiva = config.model_dump(mode="json")
+    if efetiva == manifest.get("config"):
+        return
+    manifest.setdefault("config_original", manifest.get("config"))
+    manifest["config"] = efetiva
+
+
 class Runner:
     def __init__(self, etapas: list[Etapa], runs_dir: Path):
         self.etapas = etapas
@@ -134,6 +147,7 @@ class Runner:
         inicio = nomes.index(a_partir_de) if a_partir_de else 0
         estado = self.carregar_estado(run_dir)
         manifest = ler_manifest(run_dir)
+        _atualizar_config_efetiva(manifest, estado.config)
 
         for etapa in self.etapas[inicio:]:
             manifest["etapas"].pop(etapa.nome, None)

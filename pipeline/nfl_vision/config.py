@@ -1,9 +1,13 @@
 """Parâmetros do pipeline. A configuração usada é gravada em cada análise."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class Config(BaseModel):
+    # Campos desconhecidos (removidos numa versão futura) não quebram a leitura
+    # de um manifest antigo; campos novos ausentes usam o valor padrão.
+    model_config = ConfigDict(extra="ignore")
+
     detector_pesos: str = "yolo11m.pt"
     detector_imgsz: int = 1280
     detector_conf: float = 0.25
