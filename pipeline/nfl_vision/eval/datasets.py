@@ -27,10 +27,10 @@ def chave_roboflow() -> str:
 
 
 def baixar(workspace: str, projeto: str, versao: int, formato: str, destino: Path) -> Path:
-    chave = chave_roboflow()
     alvo = destino / f"{projeto}-v{versao}-{formato}"
     if alvo.exists():
         return alvo
+    chave = chave_roboflow()
     from roboflow import Roboflow
 
     Roboflow(api_key=chave).workspace(workspace).project(projeto).version(versao).download(
@@ -56,16 +56,40 @@ def nomes_das_classes(raiz: Path) -> list[str]:
     return list(nomes)
 
 
-def _caixa_da_linha(partes: list[str], w: int, h: int) -> BBox | None:
-    """Caixa em pixels de uma linha YOLO: `cx cy w h` ou polígono `x1 y1 x2 y2 ...`."""
+CaixaNormalizada = tuple[float, float, float, float]  # x1, y1, x2, y2 em fração da imagem
+
+
+def _caixa_da_linha(partes: list[str]) -> CaixaNormalizada | None:
+    """Caixa normalizada de uma linha YOLO: `cx cy w h` ou polígono `x1 y1 x2 y2 ...`."""
     valores = list(map(float, partes[1:]))
     if len(valores) == 4:
         cx, cy, bw, bh = valores
-        return ((cx - bw / 2) * w, (cy - bh / 2) * h, (cx + bw / 2) * w, (cy + bh / 2) * h)
+        return (cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2)
     if len(valores) >= 6 and len(valores) % 2 == 0:  # segmentação: caixa que envolve o polígono
         xs, ys = valores[0::2], valores[1::2]
-        return (min(xs) * w, min(ys) * h, max(xs) * w, max(ys) * h)
+        return (min(xs), min(ys), max(xs), max(ys))
     return None
+
+
+def ler_rotulos(arquivo: Path, nomes: list) -> list[tuple[str, CaixaNormalizada]]:
+    """(classe, caixa normalizada) de cada linha de um .txt YOLO; linhas vazias são ignoradas."""
+    saida = []
+    for n, linha in enumerate(arquivo.read_text().splitlines(), start=1):
+        partes = linha.split()
+        if not partes:
+            continue
+        try:
+            caixa = _caixa_da_linha(partes)
+            indice = int(partes[0])
+        except ValueError:
+            caixa = None
+        if caixa is None:
+            raise ValueError(f"{arquivo}, linha {n}: linha YOLO inválida: {linha!r}")
+        if not 0 <= indice < len(nomes):
+            raise ValueError(
+                f"{arquivo}, linha {n}: classe {indice} fora de names ({len(nomes)} classes)")
+        saida.append((nomes[indice], caixa))
+    return saida
 
 
 def carregar_yolo(raiz: Path, split: str = "test") -> list[AmostraDeteccao]:
@@ -85,21 +109,8 @@ def carregar_yolo(raiz: Path, split: str = "test") -> list[AmostraDeteccao]:
         caixas: dict[str, list[BBox]] = {}
         rotulos = raiz / split / "labels" / f"{caminho.stem}.txt"
         if rotulos.exists():
-            for n, linha in enumerate(rotulos.read_text().splitlines(), start=1):
-                partes = linha.split()
-                if not partes:
-                    continue
-                try:
-                    caixa = _caixa_da_linha(partes, w, h)
-                    indice = int(partes[0])
-                except ValueError:
-                    caixa = None
-                if caixa is None:
-                    raise ValueError(f"{rotulos}, linha {n}: linha YOLO inválida: {linha!r}")
-                if not 0 <= indice < len(nomes):
-                    raise ValueError(
-                        f"{rotulos}, linha {n}: classe {indice} fora de names ({len(nomes)} classes)")
-                caixas.setdefault(nomes[indice], []).append(caixa)
+            for classe, (x1, y1, x2, y2) in ler_rotulos(rotulos, nomes):
+                caixas.setdefault(classe, []).append((x1 * w, y1 * h, x2 * w, y2 * h))
         amostras.append(AmostraDeteccao(caminho, caixas))
     return amostras
 

@@ -1,7 +1,7 @@
 import pytest
 from PIL import Image
 
-from nfl_vision.eval.datasets import baixar, carregar_pastas, carregar_yolo
+from nfl_vision.eval.datasets import baixar, carregar_pastas, carregar_yolo, ler_rotulos
 
 
 def test_carregar_yolo(tmp_path):
@@ -84,3 +84,28 @@ def test_baixar_exige_chave(tmp_path, monkeypatch):
     monkeypatch.delenv("ROBOFLOW_API_KEY", raising=False)
     with pytest.raises(RuntimeError, match="ROBOFLOW_API_KEY"):
         baixar("ws", "proj", 1, "yolov11", tmp_path)
+
+
+def test_ler_rotulos_normaliza_caixa_e_poligono(tmp_path):
+    arquivo = tmp_path / "a.txt"
+    arquivo.write_text("1 0.5 0.5 0.2 0.4\n\n0 0.1 0.2 0.3 0.2 0.3 0.6 0.1 0.6\n")
+
+    rotulos = ler_rotulos(arquivo, ["ball", "player"])
+
+    assert [classe for classe, _ in rotulos] == ["player", "ball"]
+    assert rotulos[0][1] == pytest.approx((0.4, 0.3, 0.6, 0.7))
+    assert rotulos[1][1] == pytest.approx((0.1, 0.2, 0.3, 0.6))  # polígono vira a caixa que o envolve
+
+
+def test_ler_rotulos_linha_invalida(tmp_path):
+    arquivo = tmp_path / "a.txt"
+    arquivo.write_text("1 0.5 0.5\n")
+    with pytest.raises(ValueError, match=r"a\.txt, linha 1"):
+        ler_rotulos(arquivo, ["ball", "player"])
+
+
+def test_baixar_reusa_pasta_existente_sem_chave(tmp_path, monkeypatch):
+    monkeypatch.delenv("ROBOFLOW_API_KEY", raising=False)
+    alvo = tmp_path / "proj-v1-yolov11"
+    alvo.mkdir()
+    assert baixar("ws", "proj", 1, "yolov11", tmp_path) == alvo
