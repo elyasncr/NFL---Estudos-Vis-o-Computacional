@@ -37,6 +37,23 @@ Os resultados ficam em `data/runs/<id>/`: `analise.json`, `anotada.png`, `manife
 
 Os downloads ficam em `../data/datasets/<projeto>-v<n>-<formato>`, o caminho que vai em `--dataset`. O Roboflow exporta o split de validação como `valid`.
 
+## Detector ajustado (opcional)
+
+O padrão é o YOLO11m do COCO (`yolo11m.pt`). Para ajustá-lo à classe `player` na GPU local:
+
+    uv run nfl-vision treino preparar --so-triagem
+    # veja ../data/datasets/treino-player-v1/triagem/*.jpg e decida cada fonte externa
+    uv run nfl-vision treino preparar --aprovar "<fonte>:<motivo>" --rejeitar "<fonte>:<motivo>"
+    uv run nfl-vision treino rodar --dataset ../data/datasets/treino-player-v1 --nome player-v1
+    uv run nfl-vision treino rodar --nome player-v1 --retomar     # se o treino parar no meio
+
+O dataset junta o fork `elyas-carvalho/nfl-player-model-ymsui` v1 e as fontes externas aprovadas (`pitchcamera`, `fhtw`, `evzn`; ver `nfl_vision/treino/fontes.py`). O split `test` é só o jogo CIN × CLE, que nunca entra no treino. Os pesos ficam em `../data/treinos/<nome>/weights/best.pt`, fora do git, com um `manifest.json` (dataset, parâmetros, versões, GPU, sha256).
+
+    uv run nfl-vision eval detect --dataset ../data/datasets/treino-player-v1 --split test --pesos ../data/treinos/player-v1/weights/best.pt --benchmark yolo-bruto
+    uv run nfl-vision analyze foto.jpg --times CIN CLE --temporada 2025 --semana 1 --detector ../data/treinos/player-v1/weights/best.pt
+
+`--pesos` troca os pesos dos preditores `nosso` e `yolo-bruto`; `--detector` vale para uma análise nova e fica gravado no manifest dela.
+
 ## Testes
 
     uv run pytest            # rápidos, sem modelos
@@ -46,3 +63,4 @@ Os downloads ficam em `../data/datasets/<projeto>-v<n>-<formato>`, o caminho que
 
 Fotos e vídeos da NFL são usados só para estudo pessoal e não são publicados (`data/` e `fotos/` ficam fora do git).
 Datasets de avaliação: `nflplayerdetection-mjrl1/nfl-player-model` e `taiseis-workspace/jersey-number-ijbaq` (Roboflow Universe, CC BY 4.0).
+Datasets de treino do detector: os acima e as fontes externas aprovadas na triagem (Roboflow Universe; licença de cada uma no `README.roboflow.txt` do download). Pesos treinados não são publicados.

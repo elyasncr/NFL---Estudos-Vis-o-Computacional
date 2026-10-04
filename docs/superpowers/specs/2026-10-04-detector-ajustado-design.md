@@ -25,24 +25,24 @@ O dataset base tem só 6 clipes (3 jogadas, 2 câmeras cada). Separar por quadro
 
 ### Triagem dos externos
 
-Para cada dataset externo, o comando de preparação gera um painel com ~12 imagens e as caixas desenhadas, salvo em `data/datasets/treino-player-v1/triagem/`. O dataset só entra se for futebol americano (não soccer) e se as caixas de jogador forem coerentes. A decisão e o motivo ficam no `manifest.json` do dataset (`fontes[].aprovada`, `fontes[].motivo`). A lista de fontes aprovadas é um parâmetro do comando, para a decisão ser explícita e reprodutível.
+Para cada dataset externo, o comando de preparação gera um painel com ~12 imagens e as caixas desenhadas, salvo em `data/datasets/treino-player-v1/triagem/`. O dataset só entra se for futebol americano (não soccer) e se as caixas de jogador forem coerentes. A decisão e o motivo ficam no `manifest.json` do dataset (`fontes[].aprovada`, `fontes[].motivo`). A decisão é parâmetro do comando, para ser explícita e reprodutível: `treino preparar --so-triagem` baixa as fontes e gera os painéis; depois `treino preparar --aprovar <fonte>:<motivo> --rejeitar <fonte>:<motivo>` monta o dataset, e toda fonte externa precisa ser decidida. No painel, caixas da classe mapeada para `player` aparecem em verde e as demais em cinza com o nome da classe.
 
 ### Conversão
 
 - Cada fonte declara o mapeamento das suas classes para `player`. Exemplos: `player`, `players`, `american-football-players`, `football-players` → `player`. Todas as outras classes (bola, árbitro, números, capacetes, `whitehat` etc.) são descartadas. Descartar o árbitro é intencional: o modelo aprende a não marcá-lo como jogador.
-- Linhas de polígono viram caixa (mín./máx. das coordenadas), como em `eval/datasets.py`.
+- Linhas de polígono viram caixa (mín./máx. das coordenadas), com a mesma função de `eval/datasets.py` (`ler_rotulos`). Caixas são cortadas aos limites da imagem; as degeneradas são descartadas e contadas.
 - Imagens sem nenhuma caixa de `player` após a conversão ficam fora.
 - Nomes de arquivo recebem o prefixo da fonte para não colidir.
 
 ### Splits
 
 - `test`: só os clipes `cin_cle_*` do fork. Nunca usados no treino nem na validação.
-- `valid`: o clipe `tb_atl_wk1_penix_pass_all22` inteiro mais 15% de cada externo aprovado (sorteio com semente fixa por imagem; esses datasets não têm identificador de clipe).
+- `valid`: o clipe `tb_atl_wk1_penix_pass_all22` inteiro mais 15% de cada externo aprovado (sorteio com semente fixa por imagem original: as cópias aumentadas que o Roboflow exporta como `<original>.rf.<hash>` ficam no mesmo split; esses datasets não têm identificador de clipe).
 - `train`: o restante.
 
 ### Saída
 
-`data/datasets/treino-player-v1/` no formato YOLO (`train|valid|test/images|labels`, `data.yaml` com `names: ['player']`) e `manifest.json` com: fontes (workspace, projeto, versão, aprovada, motivo, mapeamento), contagens de imagens e caixas por split e fonte, caixas descartadas por classe, semente e versão do `nfl-vision`. Tudo fica fora do git (`data/`).
+`data/datasets/treino-player-v1/` no formato YOLO (`train|valid|test/images|labels`, `data.yaml` com `path` absoluto e `names: ['player']`) e `manifest.json` com: fontes (workspace, projeto, versão, aprovada, motivo, mapeamento), contagens de imagens e caixas por split e fonte, caixas descartadas por classe, semente e versão do `nfl-vision`. Tudo fica fora do git (`data/`).
 
 ## 3. Treino
 
@@ -60,6 +60,8 @@ Para cada dataset externo, o comando de preparação gera um painel com ~12 imag
 
 Comando: `nfl-vision treino rodar --dataset <pasta> --nome player-v1 [--epocas N] [--imgsz N] [--retomar]`. Saída em `data/treinos/<nome>/`: `weights/best.pt`, `weights/last.pt`, curvas e `args.yaml` do Ultralytics, e `manifest.json` com o sha256 do `data.yaml` e do manifest do dataset, os parâmetros, as versões (`ultralytics`, `torch`), a GPU, a duração e o caminho e o sha256 do `best.pt`. `--retomar` continua a partir do `last.pt` com o `resume` do Ultralytics. Tempo estimado: 30–60 min.
 
+O comando recusa um `--nome` que já existe e passa `project`/`name` absolutos com `exist_ok=True` ao Ultralytics (com `exist_ok=False` ele criaria `player-v12` em silêncio). O manifest do treino tem `status` (`em_andamento`, `concluido`, `erro`, `interrompido`), duração acumulada entre retomadas e a lista de retomadas; `--retomar` num treino concluído é recusado.
+
 ## 4. Avaliação
 
 `eval detect` ganha `--pesos <arquivo.pt>`, que troca os pesos usados pelos preditores `nosso` e `yolo-bruto` (o nome do preditor passa a indicar os pesos, ex.: `yolo bruto (player-v1)`). No split `test` do dataset preparado, todos com limiar 0,25:
@@ -73,6 +75,8 @@ Comando: `nfl-vision treino rodar --dataset <pasta> --nome player-v1 [--epocas N
 | YOLO11m ajustado + filtros | se os filtros ainda ajudam depois do treino |
 
 Ressalva registrada no resultado: o teste é uma jogada de um jogo; compara modelos, não fixa a qualidade absoluta.
+
+O split `test` preparado só tem a classe `player`, então a coluna de árbitros da avaliação fica vazia; árbitro marcado como jogador aparece como falso positivo no mAP. A comparação sai em duas execuções do `eval detect` no mesmo split: uma com `--benchmark yolo-bruto --benchmark rfdetr` (pesos COCO) e outra com `--pesos <best.pt> --benchmark yolo-bruto`.
 
 Resultado e decisão (usar ou não o ajustado como recomendado) em `docs/avaliacao/2026-10-detector-ajustado.md`.
 
