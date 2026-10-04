@@ -58,6 +58,19 @@ def eh_arbitro(recorte_bgr: np.ndarray) -> bool:
     return int((puras[1:] != puras[:-1]).sum()) >= 4
 
 
+def eh_arbitro_deteccao(img: np.ndarray, bbox, cfg: Config) -> bool | None:
+    """Recorta o tronco e testa listras de árbitro. `None` = poucos pixels úteis (não é árbitro).
+
+    Usada por `classificar` e pelo preditor de avaliação para que a ordem das
+    duas verificações (pixels suficientes, depois listras) não possa divergir.
+    """
+    recorte = recorte_tronco(img, bbox)
+    px = pixels_uteis(recorte, cfg)
+    if len(px) < MIN_PIXELS:
+        return None
+    return eh_arbitro(recorte)
+
+
 def _distintos(pontos: np.ndarray) -> int:
     return len(np.unique(pontos.round(2), axis=0))
 
@@ -142,13 +155,13 @@ def classificar(img: np.ndarray, deteccoes: list[Deteccao],
     for d in deteccoes:
         if d.descartado:
             continue
-        recorte = recorte_tronco(img, d.bbox)
-        px = pixels_uteis(recorte, cfg)
-        if len(px) < MIN_PIXELS:
+        arbitro = eh_arbitro_deteccao(img, d.bbox, cfg)
+        if arbitro is None:
             itens[d.det_id] = TimeDet(det_id=d.det_id, time=None, confianca=0.0)
-        elif eh_arbitro(recorte):
+        elif arbitro:
             itens[d.det_id] = TimeDet(det_id=d.det_id, time=None, confianca=1.0, arbitro=True)
         else:
+            px = pixels_uteis(recorte_tronco(img, d.bbox), cfg)
             candidatos.append((d.det_id, cor_dominante(px)))
 
     if candidatos:

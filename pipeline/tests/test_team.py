@@ -5,7 +5,7 @@ from nfl_vision.config import Config
 from nfl_vision.cores import bgr_para_lab, hex_para_lab
 from nfl_vision.schemas import Deteccao
 from nfl_vision.stages.team import (
-    agrupar, classificar, eh_arbitro, eh_branco, mapear_grupos,
+    agrupar, classificar, eh_arbitro, eh_arbitro_deteccao, eh_branco, mapear_grupos,
 )
 from sintetico import AZUL_BUF, VERMELHO_KC, arbitro, campo, jogador
 
@@ -46,6 +46,22 @@ def test_camisa_preta_com_numero_branco_nao_e_arbitro():
 
 def test_camisa_lisa_nao_e_arbitro():
     assert not eh_arbitro(np.full((48, 36, 3), VERMELHO_KC, np.uint8))
+
+
+def test_eh_arbitro_deteccao_poucos_pixels_e_none():
+    img = campo()
+    bbox = jogador(img, 650, 300, (0, 0, 0))  # listrado fica fora de campo real: usamos pouca área
+    # caixa minúscula: poucos pixels úteis após o recorte de tronco
+    bbox_minuscula = (bbox[0], bbox[1], bbox[0] + 1, bbox[1] + 1)
+    assert eh_arbitro_deteccao(img, bbox_minuscula, CFG) is None
+
+
+def test_eh_arbitro_deteccao_listrado_e_true_senao_false():
+    img = campo()
+    caixa_arbitro = arbitro(img, 650, 300)
+    caixa_jogador = jogador(img, 100, 300, VERMELHO_KC)
+    assert eh_arbitro_deteccao(img, caixa_arbitro, CFG) is True
+    assert eh_arbitro_deteccao(img, caixa_jogador, CFG) is False
 
 
 def test_eh_branco():

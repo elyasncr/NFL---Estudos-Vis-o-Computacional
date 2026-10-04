@@ -88,10 +88,12 @@ def test_preditor_nosso_descarta_arbitro_e_fora_de_campo(foto_sintetica, monkeyp
 
 
 def test_preditor_nosso_mantem_quem_nao_da_para_classificar(foto_sintetica, monkeypatch):
+    from nfl_vision.stages import team
+
     caminho, caixas = foto_sintetica
     _detectar_caixas(monkeypatch, caixas)
-    monkeypatch.setattr(preditores, "pixels_uteis", lambda recorte, cfg: np.empty((0, 3)))
-    monkeypatch.setattr(preditores, "eh_arbitro", lambda recorte: True)
+    monkeypatch.setattr(team, "pixels_uteis", lambda recorte, cfg: np.empty((0, 3)))
+    monkeypatch.setattr(team, "eh_arbitro", lambda recorte: True)
 
     saida = preditores.PreditorNosso(Config()).prever(caminho)
 

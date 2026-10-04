@@ -1,16 +1,16 @@
 """Preditores comparados na avaliação: o nosso, YOLO bruto, RF-DETR local e o modelo NFL do Roboflow."""
 
-import os
 from pathlib import Path
 from typing import Protocol
 
 from PIL import Image, ImageOps
 
 from nfl_vision.config import Config
+from nfl_vision.eval.datasets import chave_roboflow
 from nfl_vision.schemas import BBox
 from nfl_vision.stages.detect import aplicar_filtros, detectar_pessoas
 from nfl_vision.stages.ingest import carregar_imagem
-from nfl_vision.stages.team import MIN_PIXELS, eh_arbitro, pixels_uteis, recorte_tronco
+from nfl_vision.stages.team import eh_arbitro_deteccao
 
 Predicao = tuple[float, BBox]
 
@@ -35,10 +35,7 @@ class PreditorNosso:
         for d in aplicar_filtros(detectar_pessoas(img, self.cfg), img, self.cfg):
             if d.descartado:
                 continue
-            # mesma ordem de team.classificar: sem pixels suficientes é jogador sem time,
-            # não árbitro
-            recorte = recorte_tronco(img, d.bbox)
-            if len(pixels_uteis(recorte, self.cfg)) >= MIN_PIXELS and eh_arbitro(recorte):
+            if eh_arbitro_deteccao(img, d.bbox, self.cfg):
                 continue
             saida.append((d.confianca, d.bbox))
         return saida
@@ -99,9 +96,7 @@ class PreditorRoboflowNFL:
     def __init__(self, modelo_id: str, conf: float = 0.25):
         from inference_sdk import InferenceConfiguration, InferenceHTTPClient
 
-        chave = os.environ.get("ROBOFLOW_API_KEY")
-        if not chave:
-            raise RuntimeError("defina ROBOFLOW_API_KEY no .env (app.roboflow.com/settings/api)")
+        chave = chave_roboflow()
         self.cliente = InferenceHTTPClient(api_url="https://serverless.roboflow.com", api_key=chave)
         # o servidor aplica o mesmo limiar dos outros preditores (o padrão dele é outro)
         self.cliente.configure(InferenceConfiguration(confidence_threshold=conf))

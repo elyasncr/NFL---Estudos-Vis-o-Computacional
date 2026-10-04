@@ -18,10 +18,16 @@ class AmostraDeteccao:
     caixas: dict[str, list[BBox]]  # classe -> caixas em pixels
 
 
-def baixar(workspace: str, projeto: str, versao: int, formato: str, destino: Path) -> Path:
+def chave_roboflow() -> str:
+    """ROBOFLOW_API_KEY do ambiente, usada para baixar datasets e para o benchmark hospedado."""
     chave = os.environ.get("ROBOFLOW_API_KEY")
     if not chave:
         raise RuntimeError("defina ROBOFLOW_API_KEY no .env (app.roboflow.com/settings/api)")
+    return chave
+
+
+def baixar(workspace: str, projeto: str, versao: int, formato: str, destino: Path) -> Path:
+    chave = chave_roboflow()
     alvo = destino / f"{projeto}-v{versao}-{formato}"
     if alvo.exists():
         return alvo

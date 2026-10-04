@@ -148,15 +148,6 @@ AJUDA_SPLIT = "Split avaliado (exports do Roboflow usam 'valid', não 'val')"
 SEM_EXTRAS = "dependências de avaliação ausentes ({}); rode: uv sync --extra ocr --extra eval"
 
 
-def _versao_instalada() -> str:
-    from importlib.metadata import PackageNotFoundError, version
-
-    try:
-        return version("nfl-vision")
-    except PackageNotFoundError:
-        return "não instalado"
-
-
 def _arquivo_avaliacao(nome: str) -> Path:
     from datetime import datetime
 
@@ -247,7 +238,7 @@ def eval_detect_cmd(
 
     cabecalho = {
         "dataset": str(dataset), "split": split, "conf": conf,
-        "config": cfg.model_dump(mode="json"), "versao": _versao_instalada(),
+        "config": cfg.model_dump(mode="json"), "versao": pipeline._versao("nfl-vision"),
         "metricas": {"map50": "mAP@0.5 da classe player",
                      "arbitros_como_jogador": DESCRICAO_ARBITROS},
     }
@@ -307,6 +298,6 @@ def eval_jersey_cmd(
     arquivo = _arquivo_avaliacao("jersey")
     gravar_json(arquivo, {
         "dataset": str(dataset), "split": split, "limiar": cfg.limiar_numero,
-        "altura_min": cfg.numero_altura_min, "versao": _versao_instalada(), "resultado": r,
+        "altura_min": cfg.numero_altura_min, "versao": pipeline._versao("nfl-vision"), "resultado": r,
     })
     console.print(f"Resultados: {arquivo}")
