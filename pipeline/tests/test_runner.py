@@ -339,22 +339,23 @@ def test_le_correcoes(tmp_path, foto):
     assert estado.correcoes()[0].numero == 87
 
 
-def test_manifest_antigo_sem_campos_do_rfdetr_ganha_padroes(tmp_path, foto):
+def test_manifest_antigo_sem_detector_tipo_e_tratado_como_yolo(tmp_path, foto):
+    """Manifest de antes do RF-DETR (sem detector_tipo): só existia YOLO, com seu próprio limiar."""
     chamadas = []
     runner = Runner(_etapas(chamadas), tmp_path / "runs")
     run_dir = runner.nova_analise(foto, CTX, Config(), {})
     runner.executar(run_dir)
 
     manifest = ler_manifest(run_dir)
-    antigo = {k: v for k, v in manifest["config"].items()
-              if k not in ("detector_tipo", "detector_modelo_rfdetr", "detector_resolucao")}
+    antigo = {"detector_conf": 0.25, "detector_pesos": "yolo11m.pt", "device": "cuda:0"}
     manifest["config"] = antigo
     (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 
     estado = runner.executar(run_dir, a_partir_de="b")
 
-    assert estado.config.detector_tipo == "rfdetr"
+    assert estado.config.detector_tipo == "yolo"
+    assert estado.config.detector_conf == 0.25
     novo = ler_manifest(run_dir)
-    assert novo["config"]["detector_tipo"] == "rfdetr"
-    assert novo["config"]["detector_resolucao"] == Config().detector_resolucao
+    assert novo["config"]["detector_tipo"] == "yolo"
+    assert novo["config"]["detector_conf"] == 0.25
     assert novo["config_original"] == antigo

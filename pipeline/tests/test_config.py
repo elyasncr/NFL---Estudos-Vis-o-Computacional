@@ -14,12 +14,23 @@ def test_padroes_do_detector():
 
 
 def test_manifest_antigo_sem_campos_novos_carrega_com_padroes():
+    """Manifest de antes do RF-DETR: sem detector_tipo, só existia YOLO."""
     antigo = {"detector_pesos": "yolo11m.pt", "detector_imgsz": 1280, "detector_conf": 0.25,
               "device": "cuda:0", "campo_removido_no_futuro": 1}
     cfg = Config.model_validate(antigo)
-    assert cfg.detector_tipo == "rfdetr"
+    assert cfg.detector_tipo == "yolo"
     assert cfg.detector_resolucao == Config().detector_resolucao
     assert cfg.detector_conf == 0.25  # o que estava gravado vale
+
+
+def test_config_vazia_continua_rfdetr():
+    assert Config().detector_tipo == "rfdetr"
+    assert Config.model_validate({}).detector_tipo == "rfdetr"
+
+
+def test_so_detector_conf_sem_cara_de_manifest_antigo_continua_rfdetr():
+    # não tem detector_pesos (nem outra chave típica de manifest gravado): não é tratado como legado
+    assert Config(detector_conf=0.3).detector_tipo == "rfdetr"
 
 
 @pytest.mark.parametrize("campos", [

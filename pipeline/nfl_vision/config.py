@@ -1,14 +1,28 @@
 """Parâmetros do pipeline. A configuração usada é gravada em cada análise."""
 
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 
 class Config(BaseModel):
     # Campos desconhecidos (removidos numa versão futura) não quebram a leitura
     # de um manifest antigo; campos novos ausentes usam o valor padrão.
     model_config = ConfigDict(extra="ignore")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _detector_tipo_legado(cls, dados: Any) -> Any:
+        """Manifest de antes do RF-DETR (sem detector_tipo): só existia YOLO.
+
+        Só se aplica a um dict que parece um manifest gravado (tem outra chave típica
+        de config, ex. detector_pesos) e sem detector_tipo; `Config()` sem argumentos
+        (dict vazio) continua caindo no padrão da classe (rfdetr).
+        """
+        if (isinstance(dados, dict) and dados and "detector_tipo" not in dados
+                and "detector_pesos" in dados):
+            dados = {**dados, "detector_tipo": "yolo"}
+        return dados
 
     # "rfdetr" (padrão) ou "yolo"; detector_conf vale para os dois
     detector_tipo: Literal["rfdetr", "yolo"] = "rfdetr"
