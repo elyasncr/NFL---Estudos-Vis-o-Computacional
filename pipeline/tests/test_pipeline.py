@@ -4,6 +4,7 @@ import json
 import pytest
 
 from nfl_vision import pipeline
+from nfl_vision.config import Config
 from nfl_vision.runner import ler_manifest
 from nfl_vision.schemas import Contexto
 
@@ -24,7 +25,8 @@ def test_analise_completa(dados, foto_sintetica, modelos_falsos):
     assert jogadores[2].nome == "Jogador BUF 17"
     assert jogadores[3].time == "BUF" and jogadores[3].numero is None
     assert analise.midia == {"tipo": "foto", "largura": 800, "altura": 600}
-    assert analise.modelos == {"detector": "yolo11m", "ocr": "paddleocr"}
+    assert analise.modelos == {"detector": f"rfdetr-base@{Config().detector_resolucao}",
+                               "ocr": "paddleocr"}
 
     assert (run_dir / "anotada.png").exists()
     salvo = json.loads((run_dir / "analise.json").read_text("utf-8"))
@@ -165,3 +167,10 @@ def test_reprocessar_etapa_invalida_nao_mexe_na_analise(dados, foto_sintetica, m
     assert (run_dir / "analise.json").exists()
     assert (run_dir / "anotada.png").exists()
     assert (run_dir / "corrections.json").exists()
+
+
+def test_analise_com_yolo_registra_os_pesos_como_detector(dados, foto_sintetica, modelos_falsos):
+    run_dir, analise = pipeline.analisar(foto_sintetica[0], CTX, Config(detector_tipo="yolo"))
+
+    assert analise.modelos["detector"] == "yolo11m"
+    assert ler_manifest(run_dir)["config"]["detector_tipo"] == "yolo"

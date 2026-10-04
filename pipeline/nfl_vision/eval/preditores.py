@@ -1,14 +1,12 @@
-"""Preditores comparados na avaliação: o nosso, YOLO bruto, RF-DETR local e o modelo NFL do Roboflow."""
+"""Preditores comparados na avaliação: o nosso, YOLO bruto, RF-DETR bruto e o modelo NFL do Roboflow."""
 
 from pathlib import Path
 from typing import Protocol
 
-from PIL import Image, ImageOps
-
 from nfl_vision.config import Config
 from nfl_vision.eval.datasets import chave_roboflow
 from nfl_vision.schemas import BBox
-from nfl_vision.stages.detect import _classes_coco, aplicar_filtros, detectar_pessoas, rotulo_pesos
+from nfl_vision.stages.detect import aplicar_filtros, detectar_pessoas, rotulo_detector, rotulo_pesos
 from nfl_vision.stages.ingest import carregar_imagem
 from nfl_vision.stages.team import eh_arbitro_deteccao
 
@@ -27,7 +25,7 @@ class PreditorNosso:
 
     def __init__(self, cfg: Config):
         self.cfg = cfg
-        self.nome = f"nosso ({rotulo_pesos(cfg.detector_pesos)} + filtros + árbitro)"
+        self.nome = f"nosso ({rotulo_detector(cfg)} + filtros + árbitro)"
 
     def prever(self, imagem: Path) -> list[Predicao]:
         img = carregar_imagem(imagem)
@@ -42,12 +40,12 @@ class PreditorNosso:
 
 
 class PreditorYoloBruto:
-    """O mesmo detector do pipeline, sem filtros de campo nem remoção de árbitro."""
+    """O YOLO do pipeline, sem filtros de campo nem remoção de árbitro."""
 
     pos_processamento = "nenhum"
 
     def __init__(self, cfg: Config):
-        self.cfg = cfg
+        self.cfg = cfg.model_copy(update={"detector_tipo": "yolo"})
         padrao = cfg.detector_pesos == Config().detector_pesos
         self.nome = ("yolo11m bruto (COCO, pessoa)" if padrao
                      else f"yolo bruto ({rotulo_pesos(cfg.detector_pesos)})")
@@ -57,31 +55,16 @@ class PreditorYoloBruto:
 
 
 class PreditorRFDETR:
-    nome = "rf-detr base (COCO, pessoa)"
+    """O RF-DETR do pipeline (mesma função de detecção), sem filtros nem remoção de árbitro."""
+
     pos_processamento = "nenhum"
 
-    def __init__(self, conf: float = 0.25):
-        from rfdetr import RFDETRBase
-
-        self.modelo = RFDETRBase()
-        self.conf = conf
-        self.ids_pessoa = {i for i, nome in _classes_coco().items() if nome == "person"}
-
-    def _eh_pessoa(self, dets) -> list[bool]:
-        nomes = dets.data.get("class_name")
-        if nomes is not None:
-            return [n == "person" for n in nomes]
-        return [int(k) in self.ids_pessoa for k in dets.class_id]
+    def __init__(self, cfg: Config):
+        self.cfg = cfg.model_copy(update={"detector_tipo": "rfdetr"})
+        self.nome = f"rfdetr bruto ({rotulo_detector(self.cfg)}, COCO, pessoa)"
 
     def prever(self, imagem: Path) -> list[Predicao]:
-        with Image.open(imagem) as im:
-            rgb = ImageOps.exif_transpose(im).convert("RGB")  # como carregar_yolo e o pipeline
-        dets = self.modelo.predict(rgb, threshold=self.conf)
-        return [
-            (float(c), tuple(float(v) for v in caixa))
-            for caixa, c, pessoa in zip(dets.xyxy, dets.confidence, self._eh_pessoa(dets))
-            if pessoa
-        ]
+        return [(d.confianca, d.bbox) for d in detectar_pessoas(carregar_imagem(imagem), self.cfg)]
 
 
 class PreditorRoboflowNFL:

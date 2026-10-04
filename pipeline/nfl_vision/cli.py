@@ -148,7 +148,8 @@ def _analisar_ou_reprocessar(foto, times, temporada, semana, run, a_partir_de, d
         raise typer.BadParameter(f"pesos não encontrados: {detector}", param_hint="--detector")
     contexto = _validar_contexto(times, temporada, semana)
     # caminho absoluto: o reprocessamento (--run) pode rodar de outro diretório
-    config = Config(detector_pesos=str(detector.resolve())) if detector is not None else None
+    config = (Config(detector_tipo="yolo", detector_pesos=str(detector.resolve()))
+              if detector is not None else None)
     return pipeline.analisar(foto, contexto, config)
 
 
@@ -237,7 +238,7 @@ def _criar_preditores(benchmark: List[str], cfg: Config, conf: float, modelo_rob
             if b == "yolo-bruto":
                 lista.append(preditores.PreditorYoloBruto(cfg))
             elif b == "rfdetr":
-                lista.append(preditores.PreditorRFDETR(conf))
+                lista.append(preditores.PreditorRFDETR(cfg))
             else:
                 lista.append(preditores.PreditorRoboflowNFL(modelo_roboflow, conf))
     except ImportError as exc:
@@ -272,7 +273,7 @@ def eval_detect_cmd(
     if pesos is not None and not pesos.is_file():
         raise typer.BadParameter(f"pesos não encontrados: {pesos}", param_hint="--pesos")
     cfg = (Config(detector_conf=conf) if pesos is None
-           else Config(detector_conf=conf, detector_pesos=str(pesos.resolve())))
+           else Config(detector_conf=conf, detector_tipo="yolo", detector_pesos=str(pesos.resolve())))
     amostras = _carregar_deteccao(dataset, split, "player")
     lista = _criar_preditores(benchmark, cfg, conf, modelo_roboflow)
 

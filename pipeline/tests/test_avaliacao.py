@@ -100,22 +100,6 @@ def test_preditor_nosso_mantem_quem_nao_da_para_classificar(foto_sintetica, monk
     assert [caixa for _, caixa in saida] == caixas[:5]  # poucos pixels: não é árbitro
 
 
-def test_rfdetr_filtra_pessoa(tmp_path):
-    from types import SimpleNamespace
-
-    imagem = tmp_path / "x.jpg"
-    Image.new("RGB", (20, 20)).save(imagem)
-    dets = SimpleNamespace(
-        xyxy=np.array([[0, 0, 5, 5], [1, 1, 6, 6]], float), confidence=np.array([0.8, 0.7]),
-        class_id=np.array([1, 18]), data={"class_name": np.array(["person", "dog"], dtype=object)},
-    )
-    p = object.__new__(preditores.PreditorRFDETR)
-    p.modelo = SimpleNamespace(predict=lambda im, threshold: dets)
-    p.conf, p.ids_pessoa = 0.25, {1}
-
-    assert p.prever(imagem) == [(0.8, (0.0, 0.0, 5.0, 5.0))]
-
-
 def test_roboflow_nfl_converte_caixas(monkeypatch):
     from types import SimpleNamespace
 
@@ -159,40 +143,6 @@ def test_roboflow_nfl_envia_limiar_ao_servidor(monkeypatch):
     assert p.cliente.inference_configuration.confidence_threshold == 0.4
 
 
-def test_rfdetr_usa_imagem_com_orientacao_exif(tmp_path):
-    from types import SimpleNamespace
-
-    imagem = tmp_path / "x.jpg"
-    exif = Image.Exif()
-    exif[0x0112] = 6
-    Image.new("RGB", (100, 50)).save(imagem, exif=exif)
-    recebidas = []
-
-    def predict(im, threshold):
-        recebidas.append((im.size, im.mode))
-        return SimpleNamespace(xyxy=np.empty((0, 4)), confidence=np.empty(0),
-                               class_id=np.empty(0, int), data={})
-
-    p = object.__new__(preditores.PreditorRFDETR)
-    p.modelo = SimpleNamespace(predict=predict)
-    p.conf, p.ids_pessoa = 0.25, {1}
-
-    assert p.prever(imagem) == []
-    assert recebidas == [((50, 100), "RGB")]
-
-
-def test_classes_coco_fallback_para_rfdetr_antigo(monkeypatch):
-    import sys
-    from types import ModuleType
-
-    antigo = ModuleType("rfdetr.util.coco_classes")
-    antigo.COCO_CLASSES = {1: "person", 2: "bicycle"}
-    monkeypatch.setitem(sys.modules, "rfdetr.assets.coco_classes", None)  # import falha
-    monkeypatch.setitem(sys.modules, "rfdetr.util.coco_classes", antigo)
-
-    assert preditores._classes_coco() == {1: "person", 2: "bicycle"}
-
-
 def test_rotulo_dos_pesos():
     assert preditores.rotulo_pesos("yolo11m.pt") == "yolo11m"
     assert preditores.rotulo_pesos("../data/treinos/player-v1/weights/best.pt") == "player-v1"
@@ -200,10 +150,78 @@ def test_rotulo_dos_pesos():
     assert preditores.rotulo_pesos("pesos/meu-detector.pt") == "meu-detector"
 
 
-def test_nomes_dos_preditores_indicam_os_pesos():
+def test_nomes_dos_preditores_indicam_o_detector():
     padrao = Config()
-    assert preditores.PreditorNosso(padrao).nome == "nosso (yolo11m + filtros + árbitro)"
+    res = padrao.detector_resolucao
+    assert preditores.PreditorNosso(padrao).nome == f"nosso (rfdetr-base@{res} + filtros + árbitro)"
     assert preditores.PreditorYoloBruto(padrao).nome == "yolo11m bruto (COCO, pessoa)"
-    ajustado = Config(detector_pesos="data/treinos/player-v1/weights/best.pt")
+    assert preditores.PreditorRFDETR(padrao).nome == f"rfdetr bruto (rfdetr-base@{res}, COCO, pessoa)"
+    assert preditores.PreditorRFDETR(Config(detector_resolucao=560)).nome == (
+        "rfdetr bruto (rfdetr-base@560, COCO, pessoa)")
+    yolo = Config(detector_tipo="yolo")
+    assert preditores.PreditorNosso(yolo).nome == "nosso (yolo11m + filtros + árbitro)"
+    ajustado = Config(detector_tipo="yolo", detector_pesos="data/treinos/player-v1/weights/best.pt")
     assert preditores.PreditorNosso(ajustado).nome == "nosso (player-v1 + filtros + árbitro)"
     assert preditores.PreditorYoloBruto(ajustado).nome == "yolo bruto (player-v1)"
+
+
+def _espiar_detector(monkeypatch, caixas):
+    """Substitui detectar_pessoas e guarda a config com que cada preditor o chamou."""
+    configs = []
+
+    def detectar(img, cfg):
+        configs.append(cfg)
+        return [Deteccao(det_id=i, bbox=b, confianca=0.9) for i, b in enumerate(caixas)]
+
+    monkeypatch.setattr(preditores, "detectar_pessoas", detectar)
+    return configs
+
+
+def test_preditor_nosso_segue_o_tipo_da_config(foto_sintetica, monkeypatch):
+    caminho, caixas = foto_sintetica
+    configs = _espiar_detector(monkeypatch, caixas)
+
+    preditores.PreditorNosso(Config()).prever(caminho)
+    preditores.PreditorNosso(Config(detector_tipo="yolo")).prever(caminho)
+
+    assert [c.detector_tipo for c in configs] == ["rfdetr", "yolo"]
+
+
+def test_preditor_rfdetr_usa_o_detector_compartilhado_sem_filtros(foto_sintetica, monkeypatch):
+    caminho, caixas = foto_sintetica
+    configs = _espiar_detector(monkeypatch, caixas)
+    cfg = Config(detector_tipo="yolo", detector_resolucao=560, detector_conf=0.01)
+
+    p = preditores.PreditorRFDETR(cfg)
+
+    assert [caixa for _, caixa in p.prever(caminho)] == caixas  # árbitro e arquibancada incluídos
+    assert p.pos_processamento == "nenhum"
+    assert (configs[0].detector_tipo, configs[0].detector_resolucao, configs[0].detector_conf) == (
+        "rfdetr", 560, 0.01)
+    assert cfg.detector_tipo == "yolo"  # a config recebida não é alterada
+
+
+def test_preditor_yolo_bruto_forca_yolo(foto_sintetica, monkeypatch):
+    caminho, caixas = foto_sintetica
+    configs = _espiar_detector(monkeypatch, caixas)
+
+    preditores.PreditorYoloBruto(Config()).prever(caminho)
+
+    assert configs[0].detector_tipo == "yolo"
+
+
+def test_preditor_rfdetr_usa_imagem_com_orientacao_exif(tmp_path, monkeypatch):
+    imagem = tmp_path / "x.jpg"
+    exif = Image.Exif()
+    exif[0x0112] = 6  # girada 90°
+    Image.new("RGB", (100, 50)).save(imagem, exif=exif)
+    formas = []
+
+    def detectar(img, cfg):
+        formas.append(img.shape)
+        return []
+
+    monkeypatch.setattr(preditores, "detectar_pessoas", detectar)
+
+    assert preditores.PreditorRFDETR(Config()).prever(imagem) == []
+    assert formas == [(100, 50, 3)]  # carregar_imagem aplica o EXIF, como no pipeline
