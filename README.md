@@ -36,8 +36,9 @@ O detector padrão é o RF-DETR base (COCO) em 1120 px, com limiar 0,4; os pesos
     uv run nfl-vision eval baixar --workspace taiseis-workspace --projeto jersey-number-ijbaq --versao 1 --formato folder
     uv run nfl-vision eval detect --dataset ../data/datasets/<pasta> --split test --benchmark yolo-bruto --benchmark rfdetr
     uv run nfl-vision eval jersey --dataset ../data/datasets/<pasta> --split test
+    uv run nfl-vision eval time --gabarito ../data/avaliacoes/time-gabarito-cin-cle.json --dataset ../data/datasets/treino-player-v1 --split test
 
-Os downloads ficam em `../data/datasets/<projeto>-v<n>-<formato>`, o caminho que vai em `--dataset`. O Roboflow exporta o split de validação como `valid`.
+Os downloads ficam em `../data/datasets/<projeto>-v<n>-<formato>`, o caminho que vai em `--dataset`. O Roboflow exporta o split de validação como `valid`. `eval time` mede acurácia e cobertura do time (cor do tronco) contra um gabarito rotulado à mão.
 
 ## Detector ajustado (opcional)
 

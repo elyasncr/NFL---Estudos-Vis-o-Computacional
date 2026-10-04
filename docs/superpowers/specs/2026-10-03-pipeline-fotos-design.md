@@ -90,6 +90,7 @@ nfl-vision analyze --run <analise_id> --from <etapa>
 nfl-vision correct <analise_id> --det <id> [--time KC] [--numero 87]
 nfl-vision eval detect --dataset <pasta>
 nfl-vision eval jersey --dataset <pasta>
+nfl-vision eval time --gabarito <json> --dataset <pasta>
 nfl-vision eval baixar --workspace <ws> --projeto <slug> --versao <n> --formato <yolov11|folder>
 ```
 
@@ -112,13 +113,13 @@ Lê com Pillow, aplica `ImageOps.exif_transpose`, converte para array BGR (OpenC
 - Pesos do detector definidos em config, para trocar pelo modelo ajustado no futuro. O SHA-256 gravado é o do arquivo que o ultralytics de fato carregou (`ckpt_path`), não o do nome relativo ao diretório atual.
 
 ### `team`
-1. Recorte do tronco: 10–50% da altura e 20–80% da largura da caixa (frações calculadas em float, depois arredondadas e limitadas à imagem).
+1. Recorte do tronco: `tronco_altura` (20–55% da altura) e `tronco_largura` (25–75% da largura) da caixa, em `Config` (frações calculadas em float, depois arredondadas e limitadas à imagem). Medido em `data/avaliacoes/medicao-time-recorte.json` (gabarito `data/avaliacoes/time-gabarito-cin-cle.json`, CIN × CLE, split `test`, 159 jogadores rotulados): a geometria anterior (10–50%/20–80%) dava acurácia de time 0,736 (RF-DETR) / 0,779 (YOLO); 20–55%/25–75% é a mais robusta entre os dois detectores (0,817 / 0,869) — colunas mais estreitas evitam braço e gramado nas caixas mais justas do RF-DETR.
 2. Máscara HSV remove os pixels de gramado. Se a máscara cobre mais de `mascara_gramado_max_tronco` (0,6) do recorte, a camisa é verde (NYJ, GB, SEA…) e nada é removido. Recortes com menos de 50 pixels restantes → `time = null`, confiança 0, não árbitro.
 3. **Árbitro:** teste espacial de listras verticais no recorte 2D. Cada pixel é escuro (L < 30), claro (L > 80) ou outro. Por coluna: "escura" se ≥ 70% dos pixels são escuros, "clara" se ≥ 70% são claros, senão "mista". É árbitro se ≥ 70% das colunas são puras (escuras ou claras), as frações de colunas escuras e de colunas claras são ambas ≥ 0,25 e a sequência de colunas puras (ignorando as mistas) alterna escura/clara pelo menos 4 vezes. Camisa branca com número preto, ou preta com número branco, não forma listras e não é árbitro.
 4. Cor dominante do recorte: K-means k=3 nos pixels restantes (amostra de até 3000 pixels, semente fixa), centro do maior grupo, em LAB.
 5. Agrupamento dos jogadores: K-means k=2 nas cores dominantes. Se ΔE (CIEDE2000) entre os centros < 15, todos ficam num único grupo (centro = média). Com 5 ou mais jogadores, se o grupo menor tem menos de `max(2, ⌈0,15 × n⌉)` jogadores, é tratado como outlier: um único grupo, centrado no grupo maior; o outlier recebe confiança baixa pela regra de grupo único.
 6. **Grupo → time:** cada time tem a paleta {`team_color`, `team_color2`} do nflverse. Custo de grupo↔time = menor ΔE entre o centro e a paleta. Escolhe a atribuição dos 2 grupos aos 2 times com menor custo total. Um grupo "branco" (L > 85, croma < 10) não entra no custo: o outro grupo decide, e o branco fica com o time restante. Com um único grupo, ele vai para o time de menor custo (se for branco, `time = null`).
-7. **Confiança por jogador:** `d_outro / (d_proprio + d_outro)`, sendo `d` o ΔE até cada centro; com grupo único, 1 − ΔE até o centro / 50, limitado a [0, 1]. Abaixo de 0,60 → `time = null`.
+7. **Confiança por jogador:** `d_outro / (d_proprio + d_outro)`, sendo `d` o ΔE até cada centro; com grupo único, 1 − ΔE até o centro / 50, limitado a [0, 1]. Abaixo de `limiar_time` (0,90; medido no mesmo gabarito acima) → `time = null`. Com o limiar antigo (0,60), a mesma geometria 20–55%/25–75% dava acurácia 0,817 / 0,869; em 0,90 sobe para 0,943 (RF-DETR) / 0,950 (YOLO), com cobertura 0,80 / 0,83 — perto da meta do SDD (acurácia ≥ 0,95), priorizando precisão sobre cobertura.
 
 ### Limitações conhecidas (a medir em `eval`)
 - A envoltória convexa inclui a grama da sideline e o que estiver entre componentes de gramado: staff, jogadores no banco e pessoas sobre grama da sideline passam no filtro de campo; já a faixa branca da linha lateral fica fora, e um árbitro em pé sobre ela pode ser descartado.
@@ -181,7 +182,8 @@ Caixa na cor de exibição do time, com contorno escuro por baixo e espessura pr
   - `--benchmark yolo-bruto`: o mesmo YOLO do pipeline (pessoa, COCO), sem filtros de campo nem remoção de árbitro. "nosso" contra `yolo-bruto` mede o efeito dos filtros.
   - `--benchmark rfdetr`: RF-DETR pré-treinado COCO rodando localmente (pacote `rfdetr`), sem pós-processamento. A comparação de arquitetura é `yolo-bruto` contra `rfdetr` (os dois sem filtros).
   - `--benchmark roboflow-nfl`: um modelo treinado do próprio projeto `nfl-player-model`, via inferência hospedada do Roboflow (`inference-sdk`, API key no header). Só envia imagens do split de teste do dataset público, nunca mídias do usuário. Compara "detector genérico + filtros" com "modelo treinado em NFL".
-- Acurácia de time e ponta a ponta dependem de 10–20 capturas de jogos conhecidos rotuladas pelo usuário; ficam para quando existirem.
+- `eval time`: acurácia e cobertura do time (cor do tronco) contra um gabarito rotulado à mão (`data/avaliacoes/time-gabarito-cin-cle.json`): CIN × CLE, split `test`, 159 jogadores rotulados — um único jogo, amostra pequena; serve para comparar configurações (geometria do recorte, limiar), não como medida absoluta de qualidade. Cada caixa rotulada (`time` != null) é casada com a melhor detecção não descartada (IoU ≥ 0,5); o JSON salvo registra dataset, split, gabarito, configuração efetiva (detector, `limiar_time`, `tronco_altura`/`tronco_largura`) e versão.
+- Ponta a ponta depende de mais capturas de jogos conhecidos rotuladas pelo usuário; fica para quando existirem.
 
 ## 10. Critério de pronto
 
