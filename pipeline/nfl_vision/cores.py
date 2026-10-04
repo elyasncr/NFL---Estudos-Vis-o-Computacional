@@ -10,12 +10,6 @@ def mascara_gramado(bgr: np.ndarray, hsv_min, hsv_max) -> np.ndarray:
     return cv2.inRange(hsv, np.array(hsv_min, np.uint8), np.array(hsv_max, np.uint8)) > 0
 
 
-def fracao_gramado(bgr: np.ndarray, hsv_min, hsv_max) -> float:
-    if bgr.size == 0:
-        return 0.0
-    return float(mascara_gramado(bgr, hsv_min, hsv_max).mean())
-
-
 def bgr_para_lab(pixels_bgr: np.ndarray) -> np.ndarray:
     """(N, 3) uint8 BGR -> (N, 3) float LAB, com L entre 0 e 100."""
     rgb = pixels_bgr[:, ::-1].astype(np.float64) / 255.0
