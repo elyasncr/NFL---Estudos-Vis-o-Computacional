@@ -815,8 +815,39 @@ def test_eval_time_erros_de_entrada(dados, tmp_path, monkeypatch):
         (["--gabarito", str(gabarito_time_desconhecido), "--dataset", str(ds)], "ZZZ"),
         (["--gabarito", str(gabarito_ok), "--dataset", str(ds), "--detector-tipo", "detr"],
          "use rfdetr ou yolo"),
+        (["--gabarito", str(gabarito_ok), "--dataset", str(ds), "--tronco-altura", "abc"],
+         "A,B"),
+        (["--gabarito", str(gabarito_ok), "--dataset", str(ds), "--tronco-altura", "0.2,0.5,0.9"],
+         "A,B"),
+        (["--gabarito", str(gabarito_ok), "--dataset", str(ds), "--tronco-largura", "0.9,0.1"],
+         "início < fim"),
     ]
     for args, trecho in casos:
         r = runner.invoke(app, ["eval", "time", *args])
         assert r.exit_code == 2, (args, r.output)
         assert trecho in r.output, (args, r.output)
+
+
+def test_eval_time_sweep_de_limiar_e_geometria(dados, tmp_path, monkeypatch):
+    from sintetico import VERMELHO_KC, campo, jogador
+
+    monkeypatch.setenv("COLUMNS", "300")
+    img = campo()
+    c0 = jogador(img, 100, 300, VERMELHO_KC)
+    ds = _dataset_imagens(tmp_path / "ds", {"a.jpg": img})
+    gabarito = _gabarito_json(tmp_path / "gabarito.json", ("KC", "BUF"), [
+        {"imagem": "a.jpg", "bbox": list(c0), "time": "KC"},
+    ])
+    _detector_falso_time(monkeypatch, [c0])
+
+    r = runner.invoke(app, ["eval", "time", "--gabarito", str(gabarito), "--dataset", str(ds),
+                            "--limiar-time", "0.6", "--tronco-altura", "0.15,0.45",
+                            "--tronco-largura", "0.25,0.75"])
+
+    assert r.exit_code == 0, r.output
+    salvo = _ler_avaliacao("time")
+    assert salvo["limiar_time"] == 0.6
+    assert salvo["tronco_altura"] == [0.15, 0.45]
+    assert salvo["tronco_largura"] == [0.25, 0.75]
+    assert salvo["config"]["limiar_time"] == 0.6
+    assert salvo["config"]["tronco_altura"] == [0.15, 0.45]

@@ -39,6 +39,20 @@ def _validar_detector(detector_tipo: Optional[str], pesos: Optional[Path], opcao
             param_hint=opcao_pesos)
 
 
+def _par_de_floats(valor: Optional[str], opcao: str) -> Optional[Tuple[float, float]]:
+    """Converte "A,B" (ex.: --tronco-altura) em (float, float); None se a opção não foi dada."""
+    if valor is None:
+        return None
+    partes = valor.split(",")
+    erro = typer.BadParameter("use o formato A,B (ex.: 0.2,0.55)", param_hint=opcao)
+    if len(partes) != 2:
+        raise erro
+    try:
+        return (float(partes[0]), float(partes[1]))
+    except ValueError as exc:
+        raise erro from exc
+
+
 def _ajustes_do_detector(detector_tipo: Optional[str], pesos: Optional[Path]) -> dict:
     """Campos da Config para o detector escolhido; pesos .pt implicam yolo."""
     ajustes = {}
@@ -413,6 +427,12 @@ def eval_time_cmd(
     split: str = typer.Option("test", "--split", help=AJUDA_SPLIT),
     detector_tipo: Optional[str] = typer.Option(
         None, "--detector-tipo", help=AJUDA_DETECTOR_TIPO),
+    limiar_time: Optional[float] = typer.Option(
+        None, "--limiar-time", help="Confiança mínima de time; padrão: a de Config (0,90)"),
+    tronco_altura: Optional[str] = typer.Option(
+        None, "--tronco-altura", help="A,B: fração da altura da caixa (ex.: 0.2,0.55)"),
+    tronco_largura: Optional[str] = typer.Option(
+        None, "--tronco-largura", help="A,B: fração da largura da caixa (ex.: 0.25,0.75)"),
 ) -> None:
     """Acurácia e cobertura do time (cor do tronco) contra um gabarito rotulado à mão."""
     from nfl_vision.eval import time as avaliacao
@@ -443,8 +463,19 @@ def eval_time_cmd(
             f"[yellow]gabarito foi rotulado em '{escape(gab.dataset)}', mas --dataset/--split "
             f"apontam para '{escape(dataset_esperado)}'[/yellow]")
 
+    tronco_altura_val = _par_de_floats(tronco_altura, "--tronco-altura")
+    tronco_largura_val = _par_de_floats(tronco_largura, "--tronco-largura")
     ajustes = _ajustes_do_detector(detector_tipo, None)
-    cfg = Config(**ajustes) if ajustes else Config()
+    if limiar_time is not None:
+        ajustes["limiar_time"] = limiar_time
+    if tronco_altura_val is not None:
+        ajustes["tronco_altura"] = tronco_altura_val
+    if tronco_largura_val is not None:
+        ajustes["tronco_largura"] = tronco_largura_val
+    try:
+        cfg = Config(**ajustes) if ajustes else Config()
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--tronco-altura") from exc
 
     try:
         times_df = teams.carregar_times(paths.cache_dir())
