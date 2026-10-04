@@ -55,7 +55,10 @@ class Config(BaseModel):
     # (colunas mais estreitas evitam braço e gramado nas caixas mais justas do RF-DETR)
     tronco_altura: tuple[float, float] = (0.20, 0.55)
     tronco_largura: tuple[float, float] = (0.25, 0.75)
-    limiar_time: float = 0.60
+    # medido em data/avaliacoes/medicao-time-recorte.json: 0,9 dá acurácia 0,94 (RF-DETR) e
+    # 0,95 (YOLO) com cobertura 0,80 e 0,83 (meta do SDD é acurácia >= 0,95; precisão antes de
+    # cobertura)
+    limiar_time: float = 0.90
     delta_e_grupo_unico: float = 15.0
 
     limiar_numero: float = 0.60

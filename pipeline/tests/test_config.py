@@ -85,6 +85,12 @@ def test_padroes_do_recorte_de_tronco():
     assert cfg.tronco_largura == (0.25, 0.75)
 
 
+def test_padrao_do_limiar_de_time():
+    # medido em data/avaliacoes/medicao-time-recorte.json: 0,9 dá acurácia 0,94 (RF-DETR) e
+    # 0,95 (YOLO) com cobertura 0,80 e 0,83 (meta do SDD é acurácia >= 0,95)
+    assert Config().limiar_time == 0.9
+
+
 @pytest.mark.parametrize("campos", [
     {"tronco_altura": (0.5, 0.2)},
     {"tronco_altura": (0.5, 0.5)},
