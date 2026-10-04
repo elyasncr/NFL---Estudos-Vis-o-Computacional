@@ -702,7 +702,8 @@ def test_eval_time_grava_resultado(dados, tmp_path, monkeypatch):
     assert salvo["detector"]
     assert salvo["versao"]
     assert salvo["resultado"] == {
-        "acuracia": 1.0, "cobertura": 1.0, "acertos": 2, "erros": 0, "nulos": 0, "sem_deteccao": 0,
+        "acuracia": 1.0, "cobertura": 1.0, "cobertura_total": 1.0,
+        "acertos": 2, "erros": 0, "nulos": 0, "sem_deteccao": 0, "rotulados": 2,
     }
 
 

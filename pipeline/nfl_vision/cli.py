@@ -443,15 +443,16 @@ def eval_time_cmd(
     resultado = avaliacao.avaliar(gab, pasta_imagens, paletas, cfg)
 
     tabela = Table(title=f"Time — {gabarito.name} ({gab.times[0]}×{gab.times[1]})")
-    for coluna in ("detector", "acurácia", "cobertura", "acertos", "erros", "nulos",
-                  "sem detecção"):
+    for coluna in ("detector", "acurácia", "cobertura", "cobertura total", "acertos", "erros",
+                  "nulos", "sem detecção", "rotulados"):
         tabela.add_column(coluna)
     tabela.add_row(
         rotulo_detector(cfg),
         "—" if resultado["acuracia"] is None else f"{resultado['acuracia']:.3f}",
         "—" if resultado["cobertura"] is None else f"{resultado['cobertura']:.3f}",
+        "—" if resultado["cobertura_total"] is None else f"{resultado['cobertura_total']:.3f}",
         str(resultado["acertos"]), str(resultado["erros"]), str(resultado["nulos"]),
-        str(resultado["sem_deteccao"]),
+        str(resultado["sem_deteccao"]), str(resultado["rotulados"]),
     )
     console.print(tabela)
 

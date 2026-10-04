@@ -73,12 +73,15 @@ def avaliar(gabarito: Gabarito, raiz_imagens: Path, paletas: dict, cfg: Config) 
 
     `acuracia` = acertos / (acertos + erros) [com time atribuído]. `cobertura` = (acertos +
     erros) / (acertos + erros + nulos) [caixas casadas]. `sem_deteccao` fica fora de
-    `cobertura`: é caixa rotulada sem nenhuma detecção correspondente.
+    `cobertura`: é caixa rotulada sem nenhuma detecção correspondente. `rotulados` é o total de
+    caixas rotuladas (`time` != null) no gabarito. `cobertura_total` = (acertos + erros) /
+    `rotulados`: fração de ponta a ponta, incluindo quem ficou sem detecção casada.
     """
     por_imagem: dict[str, list[CaixaGabarito]] = {}
     for c in gabarito.caixas:
         if c.time is not None:
             por_imagem.setdefault(c.imagem, []).append(c)
+    rotulados = sum(len(caixas) for caixas in por_imagem.values())
 
     acertos = erros = nulos = sem_deteccao = 0
     for nome, caixas in por_imagem.items():
@@ -108,8 +111,10 @@ def avaliar(gabarito: Gabarito, raiz_imagens: Path, paletas: dict, cfg: Config) 
     return {
         "acuracia": acertos / com_time if com_time else None,
         "cobertura": com_time / combinados if combinados else None,
+        "cobertura_total": com_time / rotulados if rotulados else None,
         "acertos": acertos,
         "erros": erros,
         "nulos": nulos,
         "sem_deteccao": sem_deteccao,
+        "rotulados": rotulados,
     }

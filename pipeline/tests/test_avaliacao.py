@@ -299,8 +299,8 @@ def test_avaliar_acertos_erros_nulos_e_sem_deteccao(tmp_path, monkeypatch):
     resultado = eval_time.avaliar(gabarito, raiz, paletas, Config())
 
     assert resultado == {
-        "acuracia": 0.5, "cobertura": pytest.approx(2 / 3),
-        "acertos": 1, "erros": 1, "nulos": 1, "sem_deteccao": 1,
+        "acuracia": 0.5, "cobertura": pytest.approx(2 / 3), "cobertura_total": 0.5,
+        "acertos": 1, "erros": 1, "nulos": 1, "sem_deteccao": 1, "rotulados": 4,
     }
 
 
@@ -310,8 +310,8 @@ def test_avaliar_sem_caixas_rotuladas_retorna_none(tmp_path):
     resultado = eval_time.avaliar(gabarito, tmp_path, {}, Config())
 
     assert resultado == {
-        "acuracia": None, "cobertura": None,
-        "acertos": 0, "erros": 0, "nulos": 0, "sem_deteccao": 0,
+        "acuracia": None, "cobertura": None, "cobertura_total": None,
+        "acertos": 0, "erros": 0, "nulos": 0, "sem_deteccao": 0, "rotulados": 0,
     }
 
 
