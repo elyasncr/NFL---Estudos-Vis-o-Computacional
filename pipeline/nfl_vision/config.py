@@ -24,12 +24,14 @@ class Config(BaseModel):
             dados = {**dados, "detector_tipo": "yolo"}
         return dados
 
-    # "rfdetr" (padrão) ou "yolo"; detector_conf vale para os dois
+    # "rfdetr" (padrão) ou "yolo"
     detector_tipo: Literal["rfdetr", "yolo"] = "rfdetr"
     detector_modelo_rfdetr: str = "base"  # variante: classe RFDETR<Variante> do pacote rfdetr
-    # medidos em data/avaliacoes/medicao-rfdetr-resolucao.json (split test, CIN×CLE)
+    # medida em data/avaliacoes/medicao-rfdetr-resolucao.json (split test, CIN×CLE)
     detector_resolucao: int = 1120  # lado de entrada do RF-DETR; múltiplo de 56 (medido)
-    detector_conf: float = 0.4      # limiar de maior F1 no split test (medido)
+    # limiar de confiança do detector. None: usa o padrão do detector_tipo (ver limiar()),
+    # que é o de maior F1 medido para cada um; definido aqui, vale para qualquer detector_tipo.
+    detector_conf: float | None = None
     # só YOLO
     detector_pesos: str = "yolo11m.pt"
     detector_imgsz: int = 1280
@@ -56,3 +58,11 @@ class Config(BaseModel):
         if valor <= 0 or valor % 56:
             raise ValueError("detector_resolucao deve ser um múltiplo positivo de 56")
         return valor
+
+    def limiar(self) -> float:
+        """Confiança mínima do detector: `detector_conf`, se definido; senão o padrão medido
+        de `detector_tipo` (data/avaliacoes/medicao-rfdetr-resolucao.json): 0.4 para o
+        RF-DETR (maior F1 no split test) e 0.25 para o YOLO (padrão de antes do RF-DETR)."""
+        if self.detector_conf is not None:
+            return self.detector_conf
+        return 0.4 if self.detector_tipo == "rfdetr" else 0.25

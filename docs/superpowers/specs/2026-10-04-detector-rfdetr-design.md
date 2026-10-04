@@ -18,12 +18,12 @@ No jogo separado (CIN×CLE, 101 quadros, split `test` de `data/datasets/treino-p
 | `detector_modelo_rfdetr` | `"base"` | variante do RF-DETR (classe do pacote `rfdetr`) |
 | `detector_resolucao` | definido pela medição (§4) | lado de entrada do RF-DETR; múltiplo de 56 |
 
-`detector_pesos`, `detector_imgsz` e `detector_conf` continuam valendo para o YOLO; `detector_conf` passa a valer para os dois (limiar de confiança do detector), com o padrão também definido pela medição. Manifests antigos (sem os campos novos) carregam com os padrões e o manifest registra a config efetiva (mecanismo atual de `config_efetiva`). Análises antigas reprocessadas com `--from detect` passam a usar o detector da config gravada nelas; como os campos novos não existiam, elas recebem o padrão novo. Isso fica registrado em `config_original`.
+`detector_pesos` e `detector_imgsz` continuam só do YOLO. `detector_conf` (limiar de confiança) passa a valer para os dois, mas com padrão por detector: `None` usa o padrão medido de `detector_tipo` (método `limiar()`), que é 0,4 para o RF-DETR (§4) e 0,25 para o YOLO (padrão de antes do RF-DETR, inalterado); definir `detector_conf` explicitamente vale para qualquer um dos dois. Manifests antigos (sem `detector_tipo`) são tratados como YOLO — só ele existia antes deste sub-projeto — por um `model_validator` que também preserva o `detector_conf` gravado. Manifests antigos sem os outros campos novos (`detector_modelo_rfdetr`, `detector_resolucao`) carregam com os padrões e o manifest registra a config efetiva (mecanismo atual de `config_efetiva`). Análises antigas reprocessadas com `--from detect` passam a usar o detector da config gravada nelas (YOLO, pelo mecanismo acima). Isso fica registrado em `config_original`.
 
 ## 3. Etapa `detect`
 
 - `detectar_pessoas(img, cfg)` despacha por `cfg.detector_tipo`. O caminho YOLO não muda.
-- Caminho RF-DETR: carrega o modelo uma vez (cache por variante, resolução e dispositivo), converte BGR→RGB, roda `predict(..., threshold=cfg.detector_conf)` e mantém só a classe pessoa do COCO, devolvendo `Deteccao` como hoje.
+- Caminho RF-DETR: carrega o modelo uma vez (cache por variante, resolução e dispositivo), converte BGR→RGB, roda `predict(..., threshold=cfg.limiar())` e mantém só a classe pessoa do COCO, devolvendo `Deteccao` como hoje.
 - Os filtros (`pequeno`, região do campo, close) são aplicados depois, iguais para os dois detectores.
 - O hash dos pesos (`pesos_sha256`) é calculado a partir do arquivo de pesos realmente carregado pelo RF-DETR.
 - A lógica do RF-DETR sai de `eval/preditores.py` (`PreditorRFDETR`) e passa a ficar na etapa `detect`; o preditor de avaliação passa a chamar a função compartilhada, para avaliação e pipeline usarem o mesmo código. O mesmo vale para o preditor `nosso`, que passa a seguir `detector_tipo`.
@@ -37,7 +37,7 @@ No split `test` de `treino-player-v1`, mAP@0.5 da classe jogador com limiar 0,01
 
 Escolhe-se a resolução com maior mAP sem filtros; empate técnico (diferença < 0,01) fica com a menor resolução, que é mais rápida. Mede-se também o tempo médio por imagem na RTX 5070 Ti.
 
-Para o limiar do pipeline (`detector_conf`), na resolução escolhida, mede-se precisão e revocação da classe jogador (IoU ≥ 0,5) nos limiares 0,2 a 0,6. O padrão é o limiar com maior F1; se os filtros forem usados, a medição é feita com eles.
+Para o limiar do RF-DETR (`detector_conf`/`limiar()`), na resolução escolhida, mede-se precisão e revocação da classe jogador (IoU ≥ 0,5) nos limiares 0,2 a 0,6. O padrão é o limiar com maior F1; se os filtros forem usados, a medição é feita com eles. O limiar do YOLO não é remedido: continua 0,25, o padrão de antes do RF-DETR.
 
 Resultado em `docs/avaliacao/2026-10-detector-rfdetr.md` e na página de resultados.
 

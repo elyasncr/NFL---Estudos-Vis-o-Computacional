@@ -151,7 +151,7 @@ def _eh_pessoa(dets) -> list[bool]:
 def _detectar_rfdetr(img: np.ndarray, cfg: Config) -> list[Deteccao]:
     # o pipeline trabalha em BGR (OpenCV); o RF-DETR espera RGB
     rgb = Image.fromarray(np.ascontiguousarray(img[:, :, ::-1]))
-    dets = _modelo_rfdetr_da_config(cfg).predict(rgb, threshold=cfg.detector_conf)
+    dets = _modelo_rfdetr_da_config(cfg).predict(rgb, threshold=cfg.limiar())
     pessoas = sorted(
         ((float(conf), tuple(float(v) for v in caixa))
          for caixa, conf, pessoa in zip(dets.xyxy, dets.confidence, _eh_pessoa(dets)) if pessoa),
@@ -163,7 +163,7 @@ def _detectar_rfdetr(img: np.ndarray, cfg: Config) -> list[Deteccao]:
 
 def _detectar_yolo(img: np.ndarray, cfg: Config) -> list[Deteccao]:
     resultado = _modelo(cfg.detector_pesos).predict(
-        img, imgsz=cfg.detector_imgsz, conf=cfg.detector_conf, classes=[0],
+        img, imgsz=cfg.detector_imgsz, conf=cfg.limiar(), classes=[0],
         device=resolver_device(cfg.device), verbose=False,
     )[0]
     caixas = resultado.boxes.xyxy.cpu().numpy()

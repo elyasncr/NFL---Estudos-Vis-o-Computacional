@@ -9,8 +9,18 @@ def test_padroes_do_detector():
     assert cfg.detector_tipo == "rfdetr"
     assert cfg.detector_modelo_rfdetr == "base"
     assert cfg.detector_resolucao % 56 == 0
-    assert 0.0 < cfg.detector_conf < 1.0
+    assert cfg.detector_conf is None  # usa o padrão do detector escolhido; ver limiar()
     assert cfg.detector_pesos == "yolo11m.pt" and cfg.detector_imgsz == 1280  # YOLO continua
+
+
+def test_limiar_usa_o_padrao_medido_de_cada_detector():
+    assert Config().limiar() == 0.4  # RF-DETR: maior F1 no split test (medido)
+    assert Config(detector_tipo="yolo").limiar() == 0.25  # YOLO: padrão de antes do RF-DETR
+
+
+def test_limiar_respeita_detector_conf_quando_definido():
+    assert Config(detector_conf=0.6).limiar() == 0.6
+    assert Config(detector_tipo="yolo", detector_conf=0.6).limiar() == 0.6
 
 
 def test_manifest_antigo_sem_campos_novos_carrega_com_padroes():

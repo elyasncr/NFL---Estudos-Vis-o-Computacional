@@ -117,7 +117,7 @@ def test_yolo_detecta_pessoas_em_imagem_real():
     cfg = Config(detector_tipo="yolo")
     dets = detectar_pessoas(carregar_imagem(ASSETS / "bus.jpg"), cfg)
     assert len(dets) >= 3
-    assert all(d.confianca >= cfg.detector_conf for d in dets)
+    assert all(d.confianca >= 0.25 for d in dets)  # padrão do YOLO (não mudou com o RF-DETR)
 
 
 @pytest.mark.model
@@ -131,7 +131,7 @@ def test_rfdetr_detecta_pessoas_em_imagem_real():
     assert cfg.detector_tipo == "rfdetr"
     dets = detectar_pessoas(carregar_imagem(ASSETS / "bus.jpg"), cfg)
     assert len(dets) >= 3
-    assert all(d.confianca >= cfg.detector_conf for d in dets)
+    assert all(d.confianca >= 0.4 for d in dets)  # padrão do RF-DETR (medido)
     assert [d.det_id for d in dets] == list(range(len(dets)))
     caminho = caminho_pesos(cfg)
     assert caminho is not None and caminho.endswith(".pth")
@@ -243,6 +243,52 @@ def test_rfdetr_sem_deteccoes(monkeypatch):
 
     _usar_rfdetr_falso(monkeypatch, ModeloRFDETRFalso(_dets_falsas([], [], [], [])))
     assert detect.detectar_pessoas(np.zeros((10, 20, 3), np.uint8), Config(device="cpu")) == []
+
+
+def test_rfdetr_usa_o_limiar_padrao_quando_detector_conf_nao_e_definido(monkeypatch):
+    from nfl_vision.stages import detect
+
+    modelo = ModeloRFDETRFalso(_dets_falsas([], [], [], []))
+    _usar_rfdetr_falso(monkeypatch, modelo)
+
+    detect.detectar_pessoas(np.zeros((10, 20, 3), np.uint8), Config(device="cpu"))
+
+    _, limiar = modelo.chamadas[0]
+    assert limiar == 0.4
+
+
+class _ArrayFalso:
+    """Imita o `.cpu().numpy()` de um tensor do ultralytics."""
+
+    def __init__(self, arr):
+        self._arr = arr
+
+    def cpu(self):
+        return self
+
+    def numpy(self):
+        return self._arr
+
+
+def test_yolo_usa_o_limiar_padrao_quando_detector_conf_nao_e_definido(monkeypatch):
+    from types import SimpleNamespace
+
+    from nfl_vision.stages import detect
+
+    chamadas = []
+
+    class ModeloYoloFalso:
+        def predict(self, img, **kwargs):
+            chamadas.append(kwargs)
+            boxes = SimpleNamespace(xyxy=_ArrayFalso(np.empty((0, 4))),
+                                    conf=_ArrayFalso(np.empty((0,))))
+            return [SimpleNamespace(boxes=boxes)]
+
+    monkeypatch.setattr(detect, "_modelo", lambda pesos: ModeloYoloFalso())
+
+    detect.detectar_pessoas(np.zeros((10, 20, 3), np.uint8), Config(detector_tipo="yolo"))
+
+    assert chamadas[0]["conf"] == 0.25
 
 
 def test_classes_coco_fallback_para_rfdetr_antigo(monkeypatch):

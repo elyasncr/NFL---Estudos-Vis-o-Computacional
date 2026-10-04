@@ -292,6 +292,33 @@ def test_eval_detect_conf_padrao_vem_da_config(dados, tmp_path, monkeypatch):
     assert _ler_avaliacao("detect")["conf"] == Config().detector_conf
 
 
+def test_eval_detect_sem_conf_cada_preditor_usa_seu_proprio_padrao(dados, tmp_path, monkeypatch):
+    """Sem --conf, nosso segue o padrão do RF-DETR e o yolo-bruto o do YOLO."""
+    monkeypatch.setenv("COLUMNS", "300")
+    _detector_falso(monkeypatch)
+    ds = _dataset_deteccao(tmp_path / "ds")
+
+    r = runner.invoke(app, ["eval", "detect", "--dataset", str(ds),
+                            "--benchmark", "yolo-bruto", "--benchmark", "rfdetr"])
+
+    assert r.exit_code == 0, r.output
+    resultados = _ler_avaliacao("detect")["resultados"]
+    assert [x["conf"] for x in resultados] == [0.4, 0.25, 0.4]
+
+
+def test_eval_detect_conf_explicito_vale_para_todos_os_preditores(dados, tmp_path, monkeypatch):
+    monkeypatch.setenv("COLUMNS", "300")
+    _detector_falso(monkeypatch)
+    ds = _dataset_deteccao(tmp_path / "ds")
+
+    r = runner.invoke(app, ["eval", "detect", "--dataset", str(ds), "--conf", "0.3",
+                            "--benchmark", "yolo-bruto", "--benchmark", "rfdetr"])
+
+    assert r.exit_code == 0, r.output
+    resultados = _ler_avaliacao("detect")["resultados"]
+    assert [x["conf"] for x in resultados] == [0.3, 0.3, 0.3]
+
+
 def test_eval_detect_preditor_com_erro_nao_para_os_outros(dados, tmp_path, monkeypatch):
     from nfl_vision.eval import preditores
 

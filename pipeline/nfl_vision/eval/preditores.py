@@ -25,6 +25,7 @@ class PreditorNosso:
 
     def __init__(self, cfg: Config):
         self.cfg = cfg
+        self.conf = cfg.limiar()
         self.nome = f"nosso ({rotulo_detector(cfg)} + filtros + árbitro)"
 
     def prever(self, imagem: Path) -> list[Predicao]:
@@ -46,6 +47,7 @@ class PreditorYoloBruto:
 
     def __init__(self, cfg: Config):
         self.cfg = cfg.model_copy(update={"detector_tipo": "yolo"})
+        self.conf = self.cfg.limiar()
         padrao = cfg.detector_pesos == Config().detector_pesos
         self.nome = ("yolo11m bruto (COCO, pessoa)" if padrao
                      else f"yolo bruto ({rotulo_pesos(cfg.detector_pesos)})")
@@ -61,6 +63,7 @@ class PreditorRFDETR:
 
     def __init__(self, cfg: Config):
         self.cfg = cfg.model_copy(update={"detector_tipo": "rfdetr"})
+        self.conf = self.cfg.limiar()
         self.nome = f"rfdetr bruto ({rotulo_detector(self.cfg)}, COCO, pessoa)"
 
     def prever(self, imagem: Path) -> list[Predicao]:

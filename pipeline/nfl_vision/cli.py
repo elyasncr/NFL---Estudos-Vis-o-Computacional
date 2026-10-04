@@ -260,7 +260,8 @@ def _carregar_deteccao(dataset: Path, split: str, classe_alvo: str):
     return amostras
 
 
-def _criar_preditores(benchmark: List[str], cfg: Config, conf: float, modelo_roboflow: str) -> list:
+def _criar_preditores(benchmark: List[str], cfg: Config, conf: Optional[float],
+                      modelo_roboflow: str) -> list:
     from nfl_vision.eval import preditores
 
     try:
@@ -270,6 +271,8 @@ def _criar_preditores(benchmark: List[str], cfg: Config, conf: float, modelo_rob
                 lista.append(preditores.PreditorYoloBruto(cfg))
             elif b == "rfdetr":
                 lista.append(preditores.PreditorRFDETR(cfg))
+            elif conf is None:  # sem --conf: usa o padrão do próprio preditor
+                lista.append(preditores.PreditorRoboflowNFL(modelo_roboflow))
             else:
                 lista.append(preditores.PreditorRoboflowNFL(modelo_roboflow, conf))
     except ImportError as exc:
@@ -286,9 +289,10 @@ def eval_detect_cmd(
     benchmark: List[str] = typer.Option(
         [], "--benchmark", help="yolo-bruto, rfdetr e/ou roboflow-nfl (repetível)"),
     modelo_roboflow: str = typer.Option("nfl-player-model/4", "--modelo-roboflow"),
-    conf: float = typer.Option(
-        Config().detector_conf, "--conf", min=0.0, max=1.0,
-        help="Confiança mínima, a mesma para todos os preditores"),
+    conf: Optional[float] = typer.Option(
+        None, "--conf", min=0.0, max=1.0,
+        help="Confiança mínima para todos os preditores; padrão: a de cada um "
+             "(rfdetr 0,4; yolo 0,25)"),
     pesos: Optional[Path] = typer.Option(
         None, "--pesos",
         help="Pesos YOLO (.pt) para os preditores nosso e yolo-bruto; implica --detector-tipo yolo"),
@@ -340,6 +344,7 @@ def eval_detect_cmd(
             r = {"preditor": p.nome, "pos_processamento": p.pos_processamento,
                  "erro": f"{type(exc).__name__}: {exc}"}
             console.print(f"[red]{escape(p.nome)}: {escape(r['erro'])}[/red]")
+        r["conf"] = p.conf  # limiar efetivamente usado por este preditor
         resultados.append(r)
         gravar_json(arquivo, {**cabecalho, "resultados": resultados})  # parcial a cada preditor
 
