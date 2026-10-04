@@ -52,7 +52,7 @@ Para cada dataset externo, o comando de preparação gera um painel com ~12 imag
 | `imgsz` | 1280 |
 | `single_cls` | true |
 | `epochs` / `patience` | 100 / 20 |
-| `batch` | 8 (fixo; `--batch` ajusta). O AutoBatch (`-1`) mede errado no Windows por causa da memória compartilhada da GPU e caiu para 1 no primeiro treino |
+| `batch` | 4 (fixo; `--batch` ajusta). O AutoBatch (`-1`) mede errado no Windows por causa da memória compartilhada da GPU e caiu para 1; com 8 a VRAM transborda para a RAM e cada época leva ~130 s, contra ~22 s com 4 |
 | `amp` | true |
 | Augmentation | padrão do Ultralytics; `close_mosaic=10` |
 | `workers` | 2 (estabilidade no Windows) |

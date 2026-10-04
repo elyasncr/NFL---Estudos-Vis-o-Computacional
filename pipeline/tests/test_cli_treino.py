@@ -175,4 +175,4 @@ def test_rodar_usa_batch_fixo_por_padrao(dados, tmp_path, monkeypatch):
     r = runner.invoke(app, ["treino", "rodar", "--dataset", str(ds), "--nome", "player-v1"])
 
     assert r.exit_code == 0, r.output
-    assert chamadas[0][1]["batch"] == 8
+    assert chamadas[0][1]["batch"] == 4

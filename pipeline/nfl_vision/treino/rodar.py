@@ -17,7 +17,7 @@ PARAMETROS = {
     "imgsz": 1280,
     "epochs": 100,
     "patience": 20,
-    "batch": 8,            # fixo: o AutoBatch (-1) mede errado no Windows e cai para 1
+    "batch": 4,            # fixo: o AutoBatch (-1) mede errado no Windows; 8 transborda os 16 GB em 1280
     "amp": True,
     "single_cls": True,
     "close_mosaic": 10,

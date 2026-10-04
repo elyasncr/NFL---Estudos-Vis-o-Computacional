@@ -442,7 +442,7 @@ def treino_rodar(
         None, "--epocas", min=1, help="Padrão: 100 (com parada antecipada, patience 20)"),
     imgsz: Optional[int] = typer.Option(None, "--imgsz", min=32, help="Padrão: 1280"),
     batch: Optional[int] = typer.Option(
-        None, "--batch", min=1, help="Imagens por lote. Padrão: 8 (cabe em 16 GB com imgsz 1280)"),
+        None, "--batch", min=1, help="Imagens por lote. Padrão: 4 (8 transborda 16 GB com imgsz 1280)"),
     retomar: bool = typer.Option(
         False, "--retomar", help="Continua do weights/last.pt do treino --nome"),
 ) -> None:
