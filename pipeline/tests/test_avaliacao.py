@@ -8,6 +8,7 @@ from nfl_vision.config import Config
 from nfl_vision.eval import detect as eval_detect
 from nfl_vision.eval import jersey as eval_jersey
 from nfl_vision.eval import preditores
+from nfl_vision.eval import time as eval_time
 from nfl_vision.eval.datasets import AmostraDeteccao
 from nfl_vision.schemas import Deteccao
 from nfl_vision.stages.jersey import Leitura
@@ -208,6 +209,110 @@ def test_preditor_yolo_bruto_forca_yolo(foto_sintetica, monkeypatch):
     preditores.PreditorYoloBruto(Config()).prever(caminho)
 
     assert configs[0].detector_tipo == "yolo"
+
+
+GABARITO_MINIMO = {"times": ["KC", "BUF"], "caixas": [
+    {"imagem": "a.jpg", "bbox": [1.0, 2.0, 3.0, 4.0], "time": "KC"},
+    {"imagem": "a.jpg", "bbox": [5.0, 6.0, 7.0, 8.0], "time": None},
+]}
+
+
+def test_carregar_gabarito(tmp_path):
+    import json
+
+    caminho = tmp_path / "gabarito.json"
+    caminho.write_text(json.dumps(GABARITO_MINIMO), encoding="utf-8")
+
+    gabarito = eval_time.carregar_gabarito(caminho)
+
+    assert gabarito.times == ("KC", "BUF")
+    assert len(gabarito.caixas) == 2
+    assert gabarito.caixas[0] == eval_time.CaixaGabarito("a.jpg", (1.0, 2.0, 3.0, 4.0), "KC")
+    assert gabarito.caixas[1].time is None
+
+
+@pytest.mark.parametrize("dados, trecho", [
+    ({"caixas": []}, "times"),
+    ({"times": ["KC"], "caixas": []}, "times"),
+    ({"times": ["KC", "BUF"]}, "caixas"),
+    ({"times": ["KC", "BUF"], "caixas": [{"bbox": [1, 2, 3, 4], "time": "KC"}]}, "imagem"),
+    ({"times": ["KC", "BUF"], "caixas": [{"imagem": "a.jpg", "time": "KC"}]}, "bbox"),
+    ({"times": ["KC", "BUF"],
+      "caixas": [{"imagem": "a.jpg", "bbox": [1, 2, 3], "time": "KC"}]}, "bbox"),
+    ({"times": ["KC", "BUF"],
+      "caixas": [{"imagem": "a.jpg", "bbox": [1, 2, 3, 4], "time": "XYZ"}]}, "XYZ"),
+])
+def test_carregar_gabarito_erros_de_formato(tmp_path, dados, trecho):
+    import json
+
+    caminho = tmp_path / "gabarito.json"
+    caminho.write_text(json.dumps(dados), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=trecho):
+        eval_time.carregar_gabarito(caminho)
+
+
+def test_carregar_gabarito_json_invalido(tmp_path):
+    caminho = tmp_path / "gabarito.json"
+    caminho.write_text("não é json", encoding="utf-8")
+
+    with pytest.raises(ValueError):
+        eval_time.carregar_gabarito(caminho)
+
+
+def _gabarito_avaliacao(nome_imagem, caixas):
+    return eval_time.Gabarito(times=("KC", "BUF"), caixas=[
+        eval_time.CaixaGabarito(nome_imagem, bbox, time) for bbox, time in caixas
+    ])
+
+
+def test_avaliar_acertos_erros_nulos_e_sem_deteccao(tmp_path, monkeypatch):
+    import cv2
+
+    from nfl_vision.cores import hex_para_lab
+    from nfl_vision.schemas import Deteccao
+    from sintetico import AZUL_BUF, VERMELHO_KC, arbitro, campo, jogador
+
+    img = campo()
+    c0 = jogador(img, 100, 300, VERMELHO_KC)  # vira KC na classificação
+    c1 = jogador(img, 400, 300, AZUL_BUF)     # vira BUF na classificação
+    c2 = arbitro(img, 650, 300)               # árbitro: time sempre null
+    raiz = tmp_path / "images"
+    raiz.mkdir()
+    cv2.imwrite(str(raiz / "a.jpg"), img)
+
+    def detectar_falso(imagem, cfg):
+        return [Deteccao(det_id=i, bbox=b, confianca=0.9) for i, b in enumerate([c0, c1, c2])]
+
+    monkeypatch.setattr(eval_time, "detectar_pessoas", detectar_falso)
+
+    gabarito = _gabarito_avaliacao("a.jpg", [
+        (c0, "KC"),                      # casa com det0 (KC): acerto
+        (c1, "KC"),                      # casa com det1 (BUF): erro
+        (c2, "BUF"),                     # casa com o árbitro (det2): nulo
+        ((700.0, 300.0, 760.0, 420.0), "KC"),  # sem detecção por perto
+        (c0, None),                      # sem time: não entra na contagem
+    ])
+    paletas = {"KC": [hex_para_lab("#E31837"), hex_para_lab("#FFB612")],
+              "BUF": [hex_para_lab("#00338D"), hex_para_lab("#C60C30")]}
+
+    resultado = eval_time.avaliar(gabarito, raiz, paletas, Config())
+
+    assert resultado == {
+        "acuracia": 0.5, "cobertura": pytest.approx(2 / 3),
+        "acertos": 1, "erros": 1, "nulos": 1, "sem_deteccao": 1,
+    }
+
+
+def test_avaliar_sem_caixas_rotuladas_retorna_none(tmp_path):
+    gabarito = _gabarito_avaliacao("a.jpg", [((0.0, 0.0, 1.0, 1.0), None)])
+
+    resultado = eval_time.avaliar(gabarito, tmp_path, {}, Config())
+
+    assert resultado == {
+        "acuracia": None, "cobertura": None,
+        "acertos": 0, "erros": 0, "nulos": 0, "sem_deteccao": 0,
+    }
 
 
 def test_preditor_rfdetr_usa_imagem_com_orientacao_exif(tmp_path, monkeypatch):
