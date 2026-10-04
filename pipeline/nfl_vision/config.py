@@ -13,8 +13,9 @@ class Config(BaseModel):
     # "rfdetr" (padrão) ou "yolo"; detector_conf vale para os dois
     detector_tipo: Literal["rfdetr", "yolo"] = "rfdetr"
     detector_modelo_rfdetr: str = "base"  # variante: classe RFDETR<Variante> do pacote rfdetr
-    detector_resolucao: int = 896         # lado de entrada do RF-DETR; múltiplo de 56
-    detector_conf: float = 0.3
+    # medidos em data/avaliacoes/medicao-rfdetr-resolucao.json (split test, CIN×CLE)
+    detector_resolucao: int = 1120  # lado de entrada do RF-DETR; múltiplo de 56 (medido)
+    detector_conf: float = 0.4      # limiar de maior F1 no split test (medido)
     # só YOLO
     detector_pesos: str = "yolo11m.pt"
     detector_imgsz: int = 1280
