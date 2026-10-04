@@ -450,17 +450,146 @@ def test_analyze_com_detector_grava_os_pesos_na_config(dados, foto_sintetica, mo
     run_dir = next(paths.runs_dir().iterdir())
     manifest = json.loads((run_dir / "manifest.json").read_text("utf-8"))
     assert manifest["config"]["detector_pesos"] == str(pesos.resolve())
+    assert manifest["config"]["detector_tipo"] == "yolo"
 
 
 def test_analyze_detector_erros(dados, foto_sintetica, tmp_path, monkeypatch):
     monkeypatch.setenv("COLUMNS", "300")
+    pesos = tmp_path / "best.pt"
+    pesos.write_bytes(b"ajustado")
     casos = [
         (["analyze", str(foto_sintetica[0]), *BASE, "--detector", str(tmp_path / "nao.pt")],
          "pesos não encontrados"),
         (["analyze", "--run", "x", "--from", "jersey", "--detector", str(foto_sintetica[0])],
          "--detector só vale para análise nova"),
+        (["analyze", "--run", "x", "--from", "jersey", "--detector-tipo", "yolo"],
+         "--detector-tipo só vale para análise nova"),
+        (["analyze", str(foto_sintetica[0]), *BASE, "--detector-tipo", "detr"],
+         "use rfdetr ou yolo"),
+        (["analyze", str(foto_sintetica[0]), *BASE, "--detector-tipo", "rfdetr",
+          "--detector", str(pesos)],
+         "não combine"),
     ]
     for args, trecho in casos:
         r = runner.invoke(app, args)
         assert r.exit_code == 2, (args, r.output)
         assert trecho in r.output, (args, r.output)
+
+
+def _manifest_da_unica_analise():
+    import json
+
+    run_dir = next(paths.runs_dir().iterdir())
+    return run_dir, json.loads((run_dir / "manifest.json").read_text("utf-8"))
+
+
+def test_analyze_usa_rfdetr_por_padrao(dados, foto_sintetica, modelos_falsos):
+    import hashlib
+    import json
+
+    from nfl_vision.config import Config
+
+    r = runner.invoke(app, ["analyze", str(foto_sintetica[0]), *BASE])
+
+    assert r.exit_code == 0, r.output
+    run_dir, manifest = _manifest_da_unica_analise()
+    assert manifest["config"]["detector_tipo"] == "rfdetr"
+    assert manifest["config"]["detector_resolucao"] == Config().detector_resolucao
+    assert manifest["versoes"]["detector_pesos_sha256"] == hashlib.sha256(b"pesos falsos").hexdigest()
+    analise = json.loads((run_dir / "analise.json").read_text("utf-8"))
+    assert analise["modelos"]["detector"] == f"rfdetr-base@{Config().detector_resolucao}"
+
+
+def test_analyze_detector_tipo_yolo(dados, foto_sintetica, modelos_falsos):
+    r = runner.invoke(app, ["analyze", str(foto_sintetica[0]), *BASE, "--detector-tipo", "yolo"])
+
+    assert r.exit_code == 0, r.output
+    _, manifest = _manifest_da_unica_analise()
+    assert manifest["config"]["detector_tipo"] == "yolo"
+    assert manifest["config"]["detector_pesos"] == "yolo11m.pt"
+
+
+def test_analyze_detector_tipo_yolo_com_pesos(dados, foto_sintetica, modelos_falsos, tmp_path):
+    pesos = tmp_path / "best.pt"
+    pesos.write_bytes(b"ajustado")
+
+    r = runner.invoke(app, ["analyze", str(foto_sintetica[0]), *BASE, "--detector-tipo", "yolo",
+                            "--detector", str(pesos)])
+
+    assert r.exit_code == 0, r.output
+    _, manifest = _manifest_da_unica_analise()
+    assert manifest["config"]["detector_tipo"] == "yolo"
+    assert manifest["config"]["detector_pesos"] == str(pesos.resolve())
+
+
+def _espiar_detector_cli(monkeypatch):
+    from nfl_vision.eval import preditores
+    from nfl_vision.schemas import Deteccao
+
+    configs = []
+
+    def detectar(img, cfg):
+        configs.append(cfg)
+        return [Deteccao(det_id=0, bbox=(40.0, 30.0, 60.0, 70.0), confianca=0.9)]
+
+    monkeypatch.setattr(preditores, "detectar_pessoas", detectar)
+    return configs
+
+
+def test_eval_detect_nosso_segue_rfdetr_e_resolucao(dados, tmp_path, monkeypatch):
+    monkeypatch.setenv("COLUMNS", "300")
+    configs = _espiar_detector_cli(monkeypatch)
+    ds = _dataset_deteccao(tmp_path / "ds")
+
+    r = runner.invoke(app, ["eval", "detect", "--dataset", str(ds), "--resolucao", "560",
+                            "--benchmark", "rfdetr", "--benchmark", "yolo-bruto"])
+
+    assert r.exit_code == 0, r.output
+    salvo = _ler_avaliacao("detect")
+    assert salvo["config"]["detector_tipo"] == "rfdetr"
+    assert salvo["config"]["detector_resolucao"] == 560
+    assert [x["preditor"] for x in salvo["resultados"]] == [
+        "nosso (rfdetr-base@560 + filtros + árbitro)",
+        "rfdetr bruto (rfdetr-base@560, COCO, pessoa)",
+        "yolo11m bruto (COCO, pessoa)",
+    ]
+    assert [(c.detector_tipo, c.detector_resolucao) for c in configs] == [
+        ("rfdetr", 560), ("rfdetr", 560), ("yolo", 560)]
+
+
+def test_eval_detect_detector_tipo_yolo(dados, tmp_path, monkeypatch):
+    monkeypatch.setenv("COLUMNS", "300")
+    _espiar_detector_cli(monkeypatch)
+    ds = _dataset_deteccao(tmp_path / "ds")
+
+    r = runner.invoke(app, ["eval", "detect", "--dataset", str(ds), "--detector-tipo", "yolo"])
+
+    assert r.exit_code == 0, r.output
+    salvo = _ler_avaliacao("detect")
+    assert salvo["config"]["detector_tipo"] == "yolo"
+    assert salvo["resultados"][0]["preditor"] == "nosso (yolo11m + filtros + árbitro)"
+
+
+def test_eval_detect_erros_de_detector(dados, tmp_path, monkeypatch):
+    monkeypatch.setenv("COLUMNS", "300")
+    ds = _dataset_deteccao(tmp_path / "ds")
+    pesos = tmp_path / "best.pt"
+    pesos.write_bytes(b"ajustado")
+    casos = [
+        (["--resolucao", "900"], "múltiplo positivo de 56"),
+        (["--detector-tipo", "detr"], "use rfdetr ou yolo"),
+        (["--detector-tipo", "rfdetr", "--pesos", str(pesos)], "não combine"),
+    ]
+    for args, trecho in casos:
+        r = runner.invoke(app, ["eval", "detect", "--dataset", str(ds), *args])
+        assert r.exit_code == 2, (args, r.output)
+        assert trecho in r.output, (args, r.output)
+
+
+def test_help_menciona_detector_tipo():
+    for comando in (["analyze", "--help"], ["eval", "detect", "--help"]):
+        r = runner.invoke(app, comando, env={"COLUMNS": "300"})
+        assert r.exit_code == 0, r.output
+        assert "--detector-tipo" in r.output
+    r = runner.invoke(app, ["eval", "detect", "--help"], env={"COLUMNS": "300"})
+    assert "--resolucao" in r.output

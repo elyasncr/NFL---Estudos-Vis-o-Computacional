@@ -25,6 +25,30 @@ treino_app = typer.Typer(help="Preparação do dataset e ajuste fino do detector
 app.add_typer(treino_app, name="treino")
 console = Console()
 
+DETECTORES = ("rfdetr", "yolo")
+AJUDA_DETECTOR_TIPO = "Detector: rfdetr (padrão) ou yolo"
+
+
+def _validar_detector(detector_tipo: Optional[str], pesos: Optional[Path], opcao_pesos: str) -> None:
+    """Tipo conhecido; pesos (.pt) são do YOLO e não combinam com rfdetr."""
+    if detector_tipo is not None and detector_tipo not in DETECTORES:
+        raise typer.BadParameter("use rfdetr ou yolo", param_hint="--detector-tipo")
+    if pesos is not None and detector_tipo == "rfdetr":
+        raise typer.BadParameter(
+            f"{opcao_pesos} recebe pesos YOLO (.pt); não combine com --detector-tipo rfdetr",
+            param_hint=opcao_pesos)
+
+
+def _ajustes_do_detector(detector_tipo: Optional[str], pesos: Optional[Path]) -> dict:
+    """Campos da Config para o detector escolhido; pesos .pt implicam yolo."""
+    ajustes = {}
+    if detector_tipo is not None:
+        ajustes["detector_tipo"] = detector_tipo
+    if pesos is not None:
+        # caminho absoluto: o reprocessamento (--run) pode rodar de outro diretório
+        ajustes.update(detector_tipo="yolo", detector_pesos=str(pesos.resolve()))
+    return ajustes
+
 
 @app.callback()
 def _inicio() -> None:
@@ -106,17 +130,20 @@ def analyze(
     semana: Optional[int] = typer.Option(None, "--semana"),
     run: Optional[str] = typer.Option(None, "--run", help="Reprocessar uma análise existente"),
     a_partir_de: Optional[str] = typer.Option(None, "--from", help="Etapa inicial do reprocessamento"),
+    detector_tipo: Optional[str] = typer.Option(None, "--detector-tipo", help=AJUDA_DETECTOR_TIPO),
     detector: Optional[Path] = typer.Option(
-        None, "--detector", help="Pesos do detector (.pt) para esta análise; padrão: yolo11m.pt COCO"),
+        None, "--detector",
+        help="Pesos YOLO (.pt) para esta análise; implica --detector-tipo yolo"),
 ) -> None:
     """Analisa uma foto ou reprocessa uma análise a partir de uma etapa."""
     with _tratando_falha_de_etapa(run):
         run_dir, analise = _analisar_ou_reprocessar(
-            foto, times, temporada, semana, run, a_partir_de, detector)
+            foto, times, temporada, semana, run, a_partir_de, detector, detector_tipo)
     _imprimir(analise, run_dir)
 
 
-def _analisar_ou_reprocessar(foto, times, temporada, semana, run, a_partir_de, detector=None):
+def _analisar_ou_reprocessar(foto, times, temporada, semana, run, a_partir_de, detector=None,
+                             detector_tipo=None):
     if a_partir_de is not None and not run:
         raise typer.BadParameter("--from exige --run <id>", param_hint="--from")
     if run and foto is not None:
@@ -127,6 +154,11 @@ def _analisar_ou_reprocessar(foto, times, temporada, semana, run, a_partir_de, d
         raise typer.BadParameter(
             "--detector só vale para análise nova; o reprocessamento usa a config gravada",
             param_hint="--detector")
+    if run and detector_tipo is not None:
+        raise typer.BadParameter(
+            "--detector-tipo só vale para análise nova; o reprocessamento usa a config gravada",
+            param_hint="--detector-tipo")
+    _validar_detector(detector_tipo, detector, "--detector")
     if run:
         if a_partir_de not in pipeline.NOMES_ETAPAS:
             raise typer.BadParameter(
@@ -147,9 +179,8 @@ def _analisar_ou_reprocessar(foto, times, temporada, semana, run, a_partir_de, d
     if detector is not None and not detector.is_file():
         raise typer.BadParameter(f"pesos não encontrados: {detector}", param_hint="--detector")
     contexto = _validar_contexto(times, temporada, semana)
-    # caminho absoluto: o reprocessamento (--run) pode rodar de outro diretório
-    config = (Config(detector_tipo="yolo", detector_pesos=str(detector.resolve()))
-              if detector is not None else None)
+    ajustes = _ajustes_do_detector(detector_tipo, detector)
+    config = Config(**ajustes) if ajustes else None
     return pipeline.analisar(foto, contexto, config)
 
 
@@ -260,7 +291,12 @@ def eval_detect_cmd(
         help="Confiança mínima, a mesma para todos os preditores"),
     pesos: Optional[Path] = typer.Option(
         None, "--pesos",
-        help="Pesos do detector (.pt) para os preditores nosso e yolo-bruto; padrão: yolo11m.pt COCO"),
+        help="Pesos YOLO (.pt) para os preditores nosso e yolo-bruto; implica --detector-tipo yolo"),
+    detector_tipo: Optional[str] = typer.Option(
+        None, "--detector-tipo", help=f"{AJUDA_DETECTOR_TIPO} para o preditor nosso"),
+    resolucao: Optional[int] = typer.Option(
+        None, "--resolucao",
+        help="Lado de entrada do RF-DETR (múltiplo de 56) para nosso e rfdetr; padrão: config"),
 ) -> None:
     """mAP@0.5 de jogador num split do dataset, com benchmarks opcionais."""
     from nfl_vision.eval import detect as avaliacao
@@ -270,10 +306,16 @@ def eval_detect_cmd(
         raise typer.BadParameter(
             f"use {', '.join(BENCHMARKS[:-1])} ou {BENCHMARKS[-1]}", param_hint="--benchmark")
 
+    _validar_detector(detector_tipo, pesos, "--pesos")
+    if resolucao is not None and (resolucao <= 0 or resolucao % 56):
+        raise typer.BadParameter("--resolucao deve ser um múltiplo positivo de 56",
+                                 param_hint="--resolucao")
     if pesos is not None and not pesos.is_file():
         raise typer.BadParameter(f"pesos não encontrados: {pesos}", param_hint="--pesos")
-    cfg = (Config(detector_conf=conf) if pesos is None
-           else Config(detector_conf=conf, detector_tipo="yolo", detector_pesos=str(pesos.resolve())))
+    ajustes = _ajustes_do_detector(detector_tipo, pesos)
+    if resolucao is not None:
+        ajustes["detector_resolucao"] = resolucao
+    cfg = Config(detector_conf=conf, **ajustes)
     amostras = _carregar_deteccao(dataset, split, "player")
     lista = _criar_preditores(benchmark, cfg, conf, modelo_roboflow)
 
