@@ -4,6 +4,7 @@ import numpy as np
 
 VERDE = (40, 140, 40)
 CINZA = (128, 128, 128)
+BRANCO = (255, 255, 255)
 VERMELHO_KC = (55, 24, 227)   # #E31837 em BGR
 AZUL_BUF = (141, 51, 0)       # #00338D em BGR
 

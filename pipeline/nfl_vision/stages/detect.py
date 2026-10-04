@@ -4,32 +4,63 @@ import hashlib
 from functools import lru_cache
 from pathlib import Path
 
+import cv2
 import numpy as np
 
 from nfl_vision.config import Config
-from nfl_vision.cores import fracao_gramado
-from nfl_vision.geometria import caixa_inteira
+from nfl_vision.cores import mascara_gramado
 from nfl_vision.schemas import Deteccao, DetectOut
 
 
-def faixa_dos_pes(img: np.ndarray, bbox) -> np.ndarray:
-    """Faixa logo abaixo da caixa (10% da altura), recortada pelos limites da imagem."""
-    x1, _, x2, y2 = bbox
-    altura = max(1, int(round((y2 - bbox[1]) * 0.10)))
-    xa, ya, xb, yb = caixa_inteira((x1, y2, x2, y2 + altura), img.shape)
-    return img[ya:yb, xa:xb]
+LADO_MAX_CAMPO = 640
+
+
+def regiao_do_campo(img: np.ndarray, cfg: Config) -> np.ndarray | None:
+    """Polígono (envoltória convexa) do campo na imagem inteira, ou None se não há campo.
+
+    Máscara de gramado numa cópia reduzida; fechamento morfológico une as faixas de
+    grama separadas por linhas de jarda e abertura remove ruído. Ficam os componentes
+    com área >= `campo_area_min` da imagem; pintura, letras, linhas e sombras dentro
+    do campo caem dentro da envoltória.
+    """
+    altura, largura = img.shape[:2]
+    escala = min(1.0, LADO_MAX_CAMPO / max(altura, largura))
+    reduzida = img if escala == 1.0 else cv2.resize(
+        img, (max(1, round(largura * escala)), max(1, round(altura * escala))),
+        interpolation=cv2.INTER_AREA)
+    mascara = mascara_gramado(reduzida, cfg.gramado_hsv_min, cfg.gramado_hsv_max)
+    mascara = mascara.astype(np.uint8)
+    lado = max(3, round(0.02 * max(reduzida.shape[:2])) | 1)
+    nucleo = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (lado, lado))
+    mascara = cv2.morphologyEx(mascara, cv2.MORPH_CLOSE, nucleo)
+    mascara = cv2.morphologyEx(mascara, cv2.MORPH_OPEN, nucleo)
+    n, rotulos, stats, _ = cv2.connectedComponentsWithStats(mascara, connectivity=8)
+    area_min = cfg.campo_area_min * mascara.size
+    grandes = [i for i in range(1, n) if stats[i, cv2.CC_STAT_AREA] >= area_min]
+    if not grandes:
+        return None
+    ys, xs = np.nonzero(np.isin(rotulos, grandes))
+    pontos = np.stack([xs, ys], axis=1).astype(np.float32)
+    # centros dos pixels reduzidos -> coordenadas da imagem original
+    pontos = (pontos + 0.5) / escala - 0.5
+    return cv2.convexHull(pontos)
 
 
 def toca_borda_inferior(bbox, altura_img: int) -> bool:
     return bbox[3] >= altura_img - 2
 
 
-def _fora_de_campo(img: np.ndarray, bbox, cfg: Config) -> bool:
-    """Gramado insuficiente sob os pés; jogador cortado pela borda inferior é mantido."""
-    if toca_borda_inferior(bbox, img.shape[0]):
+def _fora_de_campo(poligono: np.ndarray | None, bbox, shape, cfg: Config) -> bool:
+    """Pés (centro da base da caixa) fora do campo por mais que a margem.
+
+    Sem campo detectado (close) ninguém é descartado; jogador cortado pela borda
+    inferior é mantido.
+    """
+    if poligono is None or toca_borda_inferior(bbox, shape[0]):
         return False
-    faixa = faixa_dos_pes(img, bbox)
-    return fracao_gramado(faixa, cfg.gramado_hsv_min, cfg.gramado_hsv_max) < cfg.filtro_gramado_min
+    pes = (float((bbox[0] + bbox[2]) / 2), float(bbox[3]))
+    margem = cfg.campo_margem_rel * float(np.hypot(shape[0], shape[1]))
+    return cv2.pointPolygonTest(poligono, pes, True) < -margem
 
 
 def aplicar_filtros(deteccoes: list[Deteccao], img: np.ndarray, cfg: Config) -> list[Deteccao]:
@@ -37,12 +68,16 @@ def aplicar_filtros(deteccoes: list[Deteccao], img: np.ndarray, cfg: Config) -> 
         return []
     alturas = [d.bbox[3] - d.bbox[1] for d in deteccoes]
     mediana = float(np.median(alturas))
+    # close (jogadores ocupando boa parte da altura): não há arquibancada na mesma
+    # escala e o gramado visível é só retalho entre pernas; o filtro de campo é pulado
+    close = mediana > cfg.campo_close_altura_rel * img.shape[0]
+    poligono = None if close else regiao_do_campo(img, cfg)
     saida = []
     for d, h in zip(deteccoes, alturas):
         motivo = None
         if h < cfg.filtro_altura_rel * mediana:
             motivo = "pequeno"
-        elif _fora_de_campo(img, d.bbox, cfg):
+        elif _fora_de_campo(poligono, d.bbox, img.shape, cfg):
             motivo = "fora_de_campo"
         saida.append(d.model_copy(update={"descartado": motivo is not None,
                                           "motivo_descarte": motivo}))

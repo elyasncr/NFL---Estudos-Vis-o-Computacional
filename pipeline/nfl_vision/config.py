@@ -10,7 +10,9 @@ class Config(BaseModel):
     device: str = "cuda:0"
 
     filtro_altura_rel: float = 0.4
-    filtro_gramado_min: float = 0.3
+    campo_area_min: float = 0.05
+    campo_margem_rel: float = 0.02
+    campo_close_altura_rel: float = 0.5
     gramado_hsv_min: tuple[int, int, int] = (35, 40, 40)
     gramado_hsv_max: tuple[int, int, int] = (85, 255, 255)
     mascara_gramado_max_tronco: float = 0.6

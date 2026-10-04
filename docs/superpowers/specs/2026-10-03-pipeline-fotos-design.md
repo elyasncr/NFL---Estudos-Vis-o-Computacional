@@ -102,8 +102,11 @@ Lê com Pillow, aplica `ImageOps.exif_transpose`, converte para array BGR (OpenC
 ### `detect`
 - YOLO11m pré-treinado COCO, classe pessoa, `imgsz = 1280`, `conf ≥ 0,25`.
 - Filtro `pequeno`: altura da caixa < 0,4 × mediana das alturas das detecções.
-- Filtro `fora_de_campo`: na faixa logo abaixo da caixa (altura = 10% da caixa, mesma largura), recortada pelos limites da imagem, fração de pixels verdes de gramado (máscara HSV) < 0,3. Nunca se usa a faixa interna da caixa (ela contém camisa e pernas).
-- Caixa que toca a borda inferior (`y2 ≥ altura da imagem − 2`): o jogador está cortado e os pés não aparecem; o teste de gramado é pulado e a caixa é mantida (só o filtro `pequeno` vale).
+- Região do campo (`regiao_do_campo`), estimada uma vez por imagem: máscara HSV de gramado numa cópia reduzida (lado maior 640 px), fechamento morfológico (une as faixas de grama separadas por linhas de jarda) e abertura (remove ruído), núcleo elíptico de 2% do lado maior; ficam os componentes conexos com área ≥ `campo_area_min` (0,05) da imagem; o polígono é a envoltória convexa da união desses componentes, levada de volta à resolução original. Pintura de end zone, letras, logos, linhas brancas e sombras dentro do campo ficam dentro da envoltória. Sem componente grande o bastante → sem região (nenhum descarte por campo).
+- Filtro `fora_de_campo`: os pés (centro da base da caixa) estão fora da envoltória por mais que `campo_margem_rel` (0,02) × diagonal da imagem (`cv2.pointPolygonTest` com distância).
+- Close: se a mediana das alturas das caixas > `campo_close_altura_rel` (0,5) × altura da imagem, o filtro de campo é pulado (o gramado visível é só retalho entre pernas e não há arquibancada na mesma escala). No conjunto de avaliação os closes têm mediana ≥ 0,84 e os planos abertos/médios ≤ 0,37.
+- Caixa que toca a borda inferior (`y2 ≥ altura da imagem − 2`): o jogador está cortado e os pés não aparecem; o teste de campo é pulado e a caixa é mantida (só o filtro `pequeno` vale).
+- Histórico: a regra anterior (fração de gramado na faixa logo abaixo dos pés < 0,3) descartava 83 jogadores reais contra 44 não-jogadores no split `test` do dataset NFL do Roboflow (All-22: jogadores minúsculos sobre letras pintadas, linhas e a própria sombra) e derrubava o mAP@0,5 de 0,757 (YOLO bruto) para 0,615. Com a região do campo: 0,748 no `test` (2 jogadores perdidos por campo, ambos o mesmo árbitro rotulado como `player` em frames duplicados) e 0,777 contra 0,786 do bruto no `valid`. A diferença restante vem de pessoas da sideline (árbitro na linha lateral, cinegrafista) rotuladas como `player` no dataset: descartá-las é o comportamento desejado.
 - Coordenadas float → índices inteiros por `geometria.caixa_inteira` (arredonda e limita à imagem), usada também no recorte do tronco.
 - Pesos do detector definidos em config, para trocar pelo modelo ajustado no futuro. O SHA-256 gravado é o do arquivo que o ultralytics de fato carregou (`ckpt_path`), não o do nome relativo ao diretório atual.
 
@@ -117,9 +120,9 @@ Lê com Pillow, aplica `ImageOps.exif_transpose`, converte para array BGR (OpenC
 7. **Confiança por jogador:** `d_outro / (d_proprio + d_outro)`, sendo `d` o ΔE até cada centro; com grupo único, 1 − ΔE até o centro / 50, limitado a [0, 1]. Abaixo de 0,60 → `time = null`.
 
 ### Limitações conhecidas (a medir em `eval`)
-- Jogadores sobre end zones pintadas, logos do meio-campo ou números de jardas podem ser descartados como `fora_de_campo` (a faixa sob os pés não é verde).
-- Pilhas e oclusão: a faixa sob os pés pode ser outro jogador, e não o gramado.
-- Staff e pessoas na sideline sobre grama sintética passam no filtro de campo.
+- A envoltória convexa inclui a grama da sideline e o que estiver entre componentes de gramado: staff, jogadores no banco e pessoas sobre grama da sideline passam no filtro de campo; já a faixa branca da linha lateral fica fora, e um árbitro em pé sobre ela pode ser descartado.
+- Campo com pouca grama visível (tomada só da end zone pintada, neve, grama seca fora do matiz) pode não formar componente ≥ 5% da imagem: o filtro de campo é pulado.
+- Arquibancada ou torcida com muito verde contíguo ao campo pode alargar a envoltória.
 - Grama natural amarelada/seca fora do matiz 35–85 não entra na máscara.
 - O filtro `pequeno` usa a mediana global das alturas: em fotos de ângulo alto, jogadores distantes podem ser descartados.
 - A confiança de time mede a separação entre grupos, não a qualidade do mapeamento grupo → time (uniformes alternativos e color rush podem ser mapeados ao time errado com confiança alta).
