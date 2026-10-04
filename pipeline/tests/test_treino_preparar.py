@@ -47,11 +47,17 @@ def test_converter_classe_numerica_no_yaml(tmp_path):
 
 def test_split_externo_reprodutivel_e_agrupa_copias():
     nomes = [f"img{i:04d}_png.rf.{c}.jpg" for i in range(400) for c in ("aa", "bb")]
-    a = [split_externo("evzn", n, 0) for n in nomes]
-    assert a == [split_externo("evzn", n, 0) for n in nomes]
+    a = [split_externo("evzn", n, 0, fracao=0.15) for n in nomes]
+    assert a == [split_externo("evzn", n, 0, fracao=0.15) for n in nomes]
     assert all(a[k] == a[k + 1] for k in range(0, len(a), 2))  # cópias aumentadas juntas
     assert 0.10 < a.count("valid") / len(a) < 0.20
-    assert a != [split_externo("evzn", n, 1) for n in nomes]
+    assert a != [split_externo("evzn", n, 1, fracao=0.15) for n in nomes]
+
+
+def test_externas_vao_inteiras_para_o_treino_por_padrao():
+    # quadros vizinhos do mesmo vídeo vazariam entre train e valid; a validação fica só com a base
+    nomes = [f"{i}_jpg.rf.x.jpg" for i in range(200)]
+    assert {split_externo("fhtw", n, 0) for n in nomes} == {"train"}
 
 
 def _decisoes(datasets: Path, aprovadas=("pitchcamera", "fhtw", "evzn")) -> list[Decisao]:

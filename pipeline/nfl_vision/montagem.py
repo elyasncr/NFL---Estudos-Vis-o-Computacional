@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from nfl_vision.eval.preditores import rotulo_pesos
 from nfl_vision.schemas import Analise, Jogador
 from nfl_vision.stages.roster import aplicar_correcoes
 
@@ -39,6 +40,6 @@ def montar(estado) -> Analise:
         analise_id=estado.run_dir.name,
         midia={"tipo": "foto", "largura": ingest.largura, "altura": ingest.altura},
         contexto=estado.contexto,
-        modelos={"detector": Path(estado.config.detector_pesos).stem, "ocr": "paddleocr"},
+        modelos={"detector": rotulo_pesos(estado.config.detector_pesos), "ocr": "paddleocr"},
         jogadores=jogadores,
     )

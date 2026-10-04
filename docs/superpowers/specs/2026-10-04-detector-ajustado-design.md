@@ -37,7 +37,7 @@ Para cada dataset externo, o comando de preparação gera um painel com ~12 imag
 ### Splits
 
 - `test`: só os clipes `cin_cle_*` do fork. Nunca usados no treino nem na validação.
-- `valid`: o clipe `tb_atl_wk1_penix_pass_all22` inteiro mais 15% de cada externo aprovado (sorteio com semente fixa por imagem original: as cópias aumentadas que o Roboflow exporta como `<original>.rf.<hash>` ficam no mesmo split; esses datasets não têm identificador de clipe).
+- `valid`: só o clipe `tb_atl_wk1_penix_pass_all22` inteiro. Os externos vão inteiros para o treino: são quadros sequenciais de vídeo sem identificador de clipe, e sortear por imagem deixaria quadros vizinhos em train e valid, inflando a validação e a escolha do `best.pt` (achado da revisão; a primeira versão sorteava 15% de cada externo).
 - `train`: o restante.
 
 ### Saída
@@ -52,7 +52,7 @@ Para cada dataset externo, o comando de preparação gera um painel com ~12 imag
 | `imgsz` | 1280 |
 | `single_cls` | true |
 | `epochs` / `patience` | 100 / 20 |
-| `batch` | -1 (automático, ~60% da VRAM) |
+| `batch` | 8 (fixo; `--batch` ajusta). O AutoBatch (`-1`) mede errado no Windows por causa da memória compartilhada da GPU e caiu para 1 no primeiro treino |
 | `amp` | true |
 | Augmentation | padrão do Ultralytics; `close_mosaic=10` |
 | `workers` | 2 (estabilidade no Windows) |

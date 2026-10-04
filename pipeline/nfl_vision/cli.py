@@ -441,15 +441,19 @@ def treino_rodar(
     epocas: Optional[int] = typer.Option(
         None, "--epocas", min=1, help="Padrão: 100 (com parada antecipada, patience 20)"),
     imgsz: Optional[int] = typer.Option(None, "--imgsz", min=32, help="Padrão: 1280"),
+    batch: Optional[int] = typer.Option(
+        None, "--batch", min=1, help="Imagens por lote. Padrão: 8 (cabe em 16 GB com imgsz 1280)"),
     retomar: bool = typer.Option(
         False, "--retomar", help="Continua do weights/last.pt do treino --nome"),
 ) -> None:
     """Ajuste fino do YOLO11m para player (Ultralytics, GPU local)."""
     from nfl_vision.treino import rodar
 
-    if retomar and (dataset is not None or epocas is not None or imgsz is not None):
+    if retomar and (dataset is not None or epocas is not None or imgsz is not None
+                    or batch is not None):
         raise typer.BadParameter(
-            "--retomar usa os parâmetros do treino original; não informe --dataset, --epocas nem --imgsz",
+            "--retomar usa os parâmetros do treino original; "
+            "não informe --dataset, --epocas, --imgsz nem --batch",
             param_hint="--retomar")
     if not retomar and dataset is None:
         raise typer.BadParameter("informe --dataset (ou --retomar para continuar um treino)",
@@ -459,7 +463,8 @@ def treino_rodar(
         if retomar:
             pasta = rodar.retomar(nome, destino)
         else:
-            ajustes = {k: v for k, v in (("epochs", epocas), ("imgsz", imgsz)) if v is not None}
+            ajustes = {k: v for k, v in (("epochs", epocas), ("imgsz", imgsz), ("batch", batch))
+                       if v is not None}
             pasta = rodar.treinar(dataset, nome, destino, parametros=ajustes)
     except rodar.EntradaInvalida as exc:
         raise typer.BadParameter(str(exc)) from exc

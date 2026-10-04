@@ -21,7 +21,9 @@ from nfl_vision.treino.fontes import (
 )
 
 SPLITS = ("train", "valid", "test")
-FRACAO_VALID_EXTERNOS = 0.15
+# 0: externas inteiras no treino. Elas são quadros sequenciais de vídeo, e sortear por imagem
+# deixaria quadros vizinhos em train e valid, inflando a validação e a escolha do best.pt.
+FRACAO_VALID_EXTERNOS = 0.0
 PASTA_PADRAO = "treino-player-v1"
 MOTIVO_BASE = "base: jogo de teste (cin_cle) e treino"
 
@@ -148,7 +150,8 @@ def construir(saida: Path, decisoes: list[Decisao], semente: int = 0) -> dict:
         "fracao_valid_externos": FRACAO_VALID_EXTERNOS,
         "regras_de_split": {
             "test": f"clipes {PREFIXO_TESTE}* da base",
-            "valid": (f"clipe {CLIPE_VALID} da base + {FRACAO_VALID_EXTERNOS:.0%} de cada externa "
+            "valid": (f"clipe {CLIPE_VALID} da base" if FRACAO_VALID_EXTERNOS == 0 else
+                      f"clipe {CLIPE_VALID} da base + {FRACAO_VALID_EXTERNOS:.0%} de cada externa "
                       "aprovada (sorteio por imagem original)"),
             "train": "o restante",
         },

@@ -113,10 +113,11 @@ def test_rodar_treina_e_mostra_pesos(dados, tmp_path, monkeypatch):
     ds = dataset_preparado(tmp_path / "ds")
 
     r = runner.invoke(app, ["treino", "rodar", "--dataset", str(ds), "--nome", "player-v1",
-                            "--epocas", "5", "--imgsz", "640"])
+                            "--epocas", "5", "--imgsz", "640", "--batch", "4"])
 
     assert r.exit_code == 0, r.output
     assert chamadas[0][1]["epochs"] == 5 and chamadas[0][1]["imgsz"] == 640
+    assert chamadas[0][1]["batch"] == 4
     assert (paths.treinos_dir() / "player-v1" / "weights" / "best.pt").exists()
     assert "best.pt" in r.output
 
@@ -164,3 +165,14 @@ def test_rodar_erros_de_entrada(dados, tmp_path, monkeypatch):
         r = runner.invoke(app, ["treino", "rodar", *args])
         assert r.exit_code == 2, (args, r.output)
         assert trecho in r.output, (args, r.output)
+
+
+def test_rodar_usa_batch_fixo_por_padrao(dados, tmp_path, monkeypatch):
+    # o AutoBatch (batch=-1) mede errado no Windows (memória compartilhada da GPU) e cai para 1
+    chamadas = instalar_yolo_falso(monkeypatch)
+    ds = dataset_preparado(tmp_path / "ds")
+
+    r = runner.invoke(app, ["treino", "rodar", "--dataset", str(ds), "--nome", "player-v1"])
+
+    assert r.exit_code == 0, r.output
+    assert chamadas[0][1]["batch"] == 8
