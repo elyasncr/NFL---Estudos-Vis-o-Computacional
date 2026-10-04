@@ -86,8 +86,10 @@ def test_padroes_do_recorte_de_tronco():
 
 
 def test_padrao_do_limiar_de_time():
-    # medido em data/avaliacoes/medicao-time-recorte.json: 0,9 dá acurácia 0,94 (RF-DETR) e
-    # 0,95 (YOLO) com cobertura 0,80 e 0,83 (meta do SDD é acurácia >= 0,95)
+    # medido em data/avaliacoes/time-20261004-161852.json (RF-DETR) e time-20261004-162006.json
+    # (YOLO): 0,9 dá acurácia 0,943 (RF-DETR) e 0,951 (YOLO), cobertura 0,791 e 0,836 das caixas
+    # casadas. Números de dentro da amostra (mesmo gabarito de 159 caixas, um só jogo); a meta do
+    # SDD (acurácia >= 0,95) não está demonstrada fora dessa amostra.
     assert Config().limiar_time == 0.9
 
 

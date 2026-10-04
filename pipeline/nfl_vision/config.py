@@ -51,13 +51,22 @@ class Config(BaseModel):
     mascara_gramado_max_tronco: float = 0.6
 
     # recorte do tronco (fração da caixa): medido em data/avaliacoes/medicao-time-recorte.json
-    # (CIN x CLE, split test) — 20-55%/25-75% é a geometria mais robusta entre RF-DETR e YOLO
-    # (colunas mais estreitas evitam braço e gramado nas caixas mais justas do RF-DETR)
+    # (CIN x CLE, split test, 159 caixas rotuladas, limiar_time 0,6 nessa medição) — 20-55%/25-75%
+    # tem a maior soma de acurácia entre RF-DETR e YOLO (0,817 + 0,869); isoladamente, 15-45%/25-75%
+    # é melhor só para o RF-DETR (0,836 contra 0,817). Colunas mais estreitas evitam braço e gramado
+    # nas caixas mais justas do RF-DETR. Número de dentro da amostra (mesmo gabarito e um só jogo);
+    # ver spec §6 (team, passo 1) e §9 (eval time) para a ressalva completa.
     tronco_altura: tuple[float, float] = (0.20, 0.55)
     tronco_largura: tuple[float, float] = (0.25, 0.75)
-    # medido em data/avaliacoes/medicao-time-recorte.json: 0,9 dá acurácia 0,94 (RF-DETR) e
-    # 0,95 (YOLO) com cobertura 0,80 e 0,83 (meta do SDD é acurácia >= 0,95; precisão antes de
-    # cobertura)
+    # medido em data/avaliacoes/time-20261004-161852.json (RF-DETR) e time-20261004-162006.json
+    # (YOLO), mesmo gabarito acima: 0,9 dá acurácia 0,943 (RF-DETR) e 0,951 (YOLO), cobertura 0,791
+    # e 0,836 das caixas casadas — mas, de ponta a ponta, só 87/159 e 102/159 dos jogadores
+    # rotulados chegam a um time atribuído (0,55 e 0,64; campo cobertura_total de eval time). Meta
+    # do SDD (acurácia >= 0,95) NÃO está demonstrada: precisão antes de cobertura, mas os números
+    # são de dentro da amostra (mesmo gabarito de 159 caixas usado para escolher geometria e
+    # limiar, um só jogo; IC95% de Wilson ~[0,87; 0,98] e ~[0,89; 0,98]) — falta confirmar noutro
+    # jogo sem reajustar. Com grupo único (só um time visível no recorte), a confiança
+    # 1 - ΔE/50 raramente cruza 0,9: ver spec §6 (team, passo 7) e §9 (eval time).
     limiar_time: float = 0.90
     delta_e_grupo_unico: float = 15.0
 
