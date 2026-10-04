@@ -337,3 +337,24 @@ def test_le_correcoes(tmp_path, foto):
     )
     estado = runner.carregar_estado(run_dir)
     assert estado.correcoes()[0].numero == 87
+
+
+def test_manifest_antigo_sem_campos_do_rfdetr_ganha_padroes(tmp_path, foto):
+    chamadas = []
+    runner = Runner(_etapas(chamadas), tmp_path / "runs")
+    run_dir = runner.nova_analise(foto, CTX, Config(), {})
+    runner.executar(run_dir)
+
+    manifest = ler_manifest(run_dir)
+    antigo = {k: v for k, v in manifest["config"].items()
+              if k not in ("detector_tipo", "detector_modelo_rfdetr", "detector_resolucao")}
+    manifest["config"] = antigo
+    (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    estado = runner.executar(run_dir, a_partir_de="b")
+
+    assert estado.config.detector_tipo == "rfdetr"
+    novo = ler_manifest(run_dir)
+    assert novo["config"]["detector_tipo"] == "rfdetr"
+    assert novo["config"]["detector_resolucao"] == Config().detector_resolucao
+    assert novo["config_original"] == antigo
