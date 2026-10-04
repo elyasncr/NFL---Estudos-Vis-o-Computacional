@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from nfl_vision.config import Config
+from nfl_vision.config import VARIANTES_RFDETR, Config
 from nfl_vision.cores import mascara_gramado
 from nfl_vision.schemas import Deteccao, DetectOut
 
@@ -113,9 +113,12 @@ def _modelo(pesos: str):
 def _modelo_rfdetr(variante: str, resolucao: int, device: str):
     import rfdetr
 
-    classe = getattr(rfdetr, f"RFDETR{variante.capitalize()}", None)
-    if classe is None:
-        raise ValueError(f"variante do RF-DETR desconhecida: '{variante}'")
+    nome_classe = VARIANTES_RFDETR.get(variante)
+    if nome_classe is None:
+        raise ValueError(
+            f"variante do RF-DETR desconhecida: '{variante}'; use uma de: "
+            f"{', '.join(VARIANTES_RFDETR)}")
+    classe = getattr(rfdetr, nome_classe)
     return classe(resolution=resolucao, device=device)
 
 

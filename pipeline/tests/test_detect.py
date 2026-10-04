@@ -336,7 +336,7 @@ def test_hash_dos_pesos_do_rfdetr_desconhecido_vira_none(monkeypatch):
 def test_variante_do_rfdetr_desconhecida():
     from nfl_vision.stages import detect
 
-    with pytest.raises(ValueError, match="variante do RF-DETR desconhecida"):
+    with pytest.raises(ValueError, match="variante do RF-DETR desconhecida.*use uma de: base"):
         detect._modelo_rfdetr("inexistente", 560, "cpu")
 
 

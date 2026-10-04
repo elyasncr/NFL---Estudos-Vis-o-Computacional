@@ -4,6 +4,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
+# variante do RF-DETR -> classe do pacote `rfdetr`. Só "base" é suportada por ora; a regra
+# de `detector_resolucao` (múltiplo de 56) é específica do RFDETRBase.
+VARIANTES_RFDETR = {"base": "RFDETRBase"}
+
 
 class Config(BaseModel):
     # Campos desconhecidos (removidos numa versão futura) não quebram a leitura
@@ -26,8 +30,9 @@ class Config(BaseModel):
 
     # "rfdetr" (padrão) ou "yolo"
     detector_tipo: Literal["rfdetr", "yolo"] = "rfdetr"
-    detector_modelo_rfdetr: str = "base"  # variante: classe RFDETR<Variante> do pacote rfdetr
+    detector_modelo_rfdetr: str = "base"  # variante do RF-DETR; ver VARIANTES_RFDETR
     # medida em data/avaliacoes/medicao-rfdetr-resolucao.json (split test, CIN×CLE)
+    # múltiplo de 56: regra do RFDETRBase (única variante suportada; ver VARIANTES_RFDETR)
     detector_resolucao: int = 1120  # lado de entrada do RF-DETR; múltiplo de 56 (medido)
     # limiar de confiança do detector. None: usa o padrão do detector_tipo (ver limiar()),
     # que é o de maior F1 medido para cada um; definido aqui, vale para qualquer detector_tipo.
@@ -57,6 +62,15 @@ class Config(BaseModel):
     def _multiplo_de_56(cls, valor: int) -> int:
         if valor <= 0 or valor % 56:
             raise ValueError("detector_resolucao deve ser um múltiplo positivo de 56")
+        return valor
+
+    @field_validator("detector_modelo_rfdetr")
+    @classmethod
+    def _variante_rfdetr_conhecida(cls, valor: str) -> str:
+        if valor not in VARIANTES_RFDETR:
+            raise ValueError(
+                f"variante do RF-DETR desconhecida: '{valor}'; use uma de: "
+                f"{', '.join(VARIANTES_RFDETR)}")
         return valor
 
     def limiar(self) -> float:

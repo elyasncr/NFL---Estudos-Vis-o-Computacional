@@ -47,6 +47,7 @@ def test_so_detector_conf_sem_cara_de_manifest_antigo_continua_rfdetr():
     {"detector_tipo": "detr"},
     {"detector_resolucao": 900},
     {"detector_resolucao": 0},
+    {"detector_modelo_rfdetr": "large"},
 ])
 def test_valores_invalidos(campos):
     with pytest.raises(ValidationError):
@@ -55,3 +56,8 @@ def test_valores_invalidos(campos):
 
 def test_resolucao_multiplo_de_56_aceita():
     assert Config(detector_resolucao=560).detector_resolucao == 560
+
+
+def test_variante_do_rfdetr_invalida_lista_as_suportadas():
+    with pytest.raises(ValidationError, match="use uma de: base"):
+        Config(detector_modelo_rfdetr="large")
