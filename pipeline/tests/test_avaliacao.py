@@ -266,6 +266,35 @@ def _gabarito_avaliacao(nome_imagem, caixas):
     ])
 
 
+def _caixa(nome_imagem, bbox, time):
+    return eval_time.CaixaGabarito(nome_imagem, bbox, time)
+
+
+def test_casar_um_a_um_duas_caixas_disputam_a_mesma_deteccao():
+    det = Deteccao(det_id=0, bbox=(0.0, 0.0, 10.0, 10.0), confianca=0.9)
+    caixa_alta_iou = _caixa("a.jpg", (0.0, 0.0, 10.0, 10.0), "KC")   # IoU 1.0
+    caixa_baixa_iou = _caixa("a.jpg", (0.0, 0.0, 10.0, 7.0), "BUF")  # IoU 0.7
+
+    casadas = eval_time._casar_um_a_um([caixa_alta_iou, caixa_baixa_iou], [det])
+
+    assert casadas == {0: det}  # só a de maior IoU fica com a única detecção
+
+
+def test_casar_um_a_um_ignora_deteccao_descartada():
+    det_descartada = Deteccao(det_id=0, bbox=(0.0, 0.0, 10.0, 10.0), confianca=0.9,
+                              descartado=True)
+    caixa = _caixa("a.jpg", (0.0, 0.0, 10.0, 10.0), "KC")
+
+    assert eval_time._casar_um_a_um([caixa], [det_descartada]) == {}
+
+
+def test_casar_um_a_um_iou_abaixo_do_limiar_fica_sem_par():
+    det = Deteccao(det_id=0, bbox=(0.0, 0.0, 10.0, 4.9), confianca=0.9)  # IoU 0.49
+    caixa = _caixa("a.jpg", (0.0, 0.0, 10.0, 10.0), "KC")
+
+    assert eval_time._casar_um_a_um([caixa], [det]) == {}
+
+
 def test_avaliar_acertos_erros_nulos_e_sem_deteccao(tmp_path, monkeypatch):
     import cv2
 
