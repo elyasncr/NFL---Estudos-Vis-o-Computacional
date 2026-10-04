@@ -160,3 +160,31 @@ def test_construir_mapeamento_invalido_nao_grava_nada(tmp_path):
     with pytest.raises(MapeamentoInvalido, match="football-players"):
         construir(tmp_path / "saida", lista)
     assert not (tmp_path / "saida" / "train").exists()
+
+
+def test_painel_de_triagem(tmp_path):
+    import cv2
+    import numpy as np
+
+    raiz = dataset_externo(tmp_path / "datasets", PITCH)
+    destino = tmp_path / "triagem" / "pitchcamera.jpg"
+
+    n = preparar.painel(PITCH, raiz, destino)
+
+    assert n == 42
+    img = cv2.imdecode(np.fromfile(str(destino), np.uint8), cv2.IMREAD_COLOR)
+    assert img.shape == (3 * 320, 4 * 480, 3)
+    assert (img[..., 1] > 180).any()  # caixas de player em verde
+
+
+def test_triagem_gera_um_painel_por_fonte(tmp_path):
+    datasets = tmp_path / "datasets"
+    pares = [(f, dataset_externo(datasets, f)) for f in EXTERNAS]
+
+    resumo = preparar.triagem(pares, tmp_path / "saida")
+
+    assert [r["fonte"] for r in resumo] == ["pitchcamera", "fhtw", "evzn"]
+    for r in resumo:
+        assert r["imagens"] == 42
+        assert r["painel"] == tmp_path / "saida" / "triagem" / f"{r['fonte']}.jpg"
+        assert r["painel"].exists()

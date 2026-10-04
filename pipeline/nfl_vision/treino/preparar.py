@@ -1,17 +1,21 @@
 """Montagem do dataset de treino do detector: conversão para `player`, splits sem vazamento e manifest."""
 
 import hashlib
+import random
 import shutil
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+import cv2
+import numpy as np
 import yaml
 
 from nfl_vision.eval.datasets import IMAGENS, ler_rotulos, nomes_das_classes
 from nfl_vision.pipeline import _versao
 from nfl_vision.runner import gravar_json, gravar_texto
+from nfl_vision.stages.ingest import carregar_imagem
 from nfl_vision.treino.fontes import (
     CLIPE_VALID, PREFIXO_TESTE, Fonte, split_base, validar_mapeamento,
 )
@@ -155,3 +159,55 @@ def construir(saida: Path, decisoes: list[Decisao], semente: int = 0) -> dict:
     }
     gravar_json(saida / "manifest.json", manifest)
     return manifest
+
+
+MINIATURA = (480, 320)  # largura, altura de cada imagem do painel
+COLUNAS = 4
+VERDE, CINZA = (0, 200, 0), (170, 170, 170)
+
+
+def painel(fonte: Fonte, raiz: Path, destino: Path, n: int = 12, semente: int = 0) -> int:
+    """Grade com `n` imagens sorteadas da fonte e suas caixas: player em verde, as outras
+    classes em cinza com o nome. Devolve o total de imagens da fonte."""
+    nomes = nomes_das_classes(raiz)
+    validar_mapeamento(fonte, nomes)
+    pares = imagens_da_fonte(raiz)
+    if not pares:
+        raise ValueError(f"fonte '{fonte.nome}': nenhuma imagem em {raiz}/*/images")
+    escolhidas = random.Random(semente).sample(pares, min(n, len(pares)))
+    largura, altura = MINIATURA
+    linhas_grade = -(-len(escolhidas) // COLUNAS)
+    tela = np.zeros((altura * linhas_grade, largura * COLUNAS, 3), np.uint8)
+    for k, (imagem, rotulos) in enumerate(escolhidas):
+        img = carregar_imagem(imagem)
+        h, w = img.shape[:2]
+        espessura = max(2, round(max(h, w) / 400))
+        for classe, (x1, y1, x2, y2) in (ler_rotulos(rotulos, nomes) if rotulos.exists() else []):
+            jogador = str(classe) in fonte.classes_player
+            cor = VERDE if jogador else CINZA
+            p1, p2 = (round(x1 * w), round(y1 * h)), (round(x2 * w), round(y2 * h))
+            cv2.rectangle(img, p1, p2, cor, espessura)
+            if not jogador:
+                cv2.putText(img, str(classe), (p1[0], max(p1[1] - 4, 12)), cv2.FONT_HERSHEY_SIMPLEX,
+                            max(0.5, max(h, w) / 1600), cor, espessura)
+        escala = min(largura / w, altura / h)
+        mini = cv2.resize(img, (max(1, round(w * escala)), max(1, round(h * escala))),
+                          interpolation=cv2.INTER_AREA)
+        lin, col = divmod(k, COLUNAS)
+        tela[lin * altura:lin * altura + mini.shape[0], col * largura:col * largura + mini.shape[1]] = mini
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    ok, buf = cv2.imencode(".jpg", tela)
+    if not ok:
+        raise RuntimeError(f"falha ao gerar {destino}")
+    buf.tofile(str(destino))
+    return len(pares)
+
+
+def triagem(pares: list[tuple[Fonte, Path]], saida: Path, semente: int = 0) -> list[dict]:
+    """Um painel por fonte em `<saida>/triagem/<fonte>.jpg`."""
+    resumo = []
+    for fonte, raiz in pares:
+        destino = saida / "triagem" / f"{fonte.nome}.jpg"
+        resumo.append({"fonte": fonte.nome, "imagens": painel(fonte, raiz, destino, semente=semente),
+                       "painel": destino})
+    return resumo

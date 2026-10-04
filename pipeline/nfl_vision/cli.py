@@ -20,6 +20,9 @@ from nfl_vision.stages import ingest
 app = typer.Typer(help="Identificação de jogadores da NFL em fotos.", no_args_is_help=True)
 eval_app = typer.Typer(help="Avaliação de detecção e de leitura de número.", no_args_is_help=True)
 app.add_typer(eval_app, name="eval")
+treino_app = typer.Typer(help="Preparação do dataset e ajuste fino do detector de jogadores.",
+                         no_args_is_help=True)
+app.add_typer(treino_app, name="treino")
 console = Console()
 
 
@@ -321,3 +324,89 @@ def eval_jersey_cmd(
         "altura_min": cfg.numero_altura_min, "versao": pipeline._versao("nfl-vision"), "resultado": r,
     })
     console.print(f"Resultados: {arquivo}")
+
+
+def _decisoes_externas(aprovar: List[str], rejeitar: List[str]) -> dict[str, tuple[bool, str]]:
+    """{fonte: (aprovada, motivo)} a partir de valores 'nome:motivo'."""
+    from nfl_vision.treino.fontes import EXTERNAS
+
+    validas = [f.nome for f in EXTERNAS]
+    decisoes: dict[str, tuple[bool, str]] = {}
+    for opcao, aprovada, valores in (("--aprovar", True, aprovar), ("--rejeitar", False, rejeitar)):
+        for valor in valores:
+            nome, _, motivo = valor.partition(":")
+            nome, motivo = nome.strip(), motivo.strip()
+            if nome not in validas:
+                raise typer.BadParameter(
+                    f"fonte desconhecida '{nome}'; use: {', '.join(validas)}", param_hint=opcao)
+            if not motivo:
+                raise typer.BadParameter(f"informe o motivo: '{nome}:<motivo>'", param_hint=opcao)
+            if nome in decisoes:
+                raise typer.BadParameter(f"fonte '{nome}' decidida mais de uma vez", param_hint=opcao)
+            decisoes[nome] = (aprovada, motivo)
+    return decisoes
+
+
+@treino_app.command("preparar")
+def treino_preparar(
+    saida: Optional[Path] = typer.Option(
+        None, "--saida", help="Pasta do dataset; padrão: data/datasets/treino-player-v1"),
+    so_triagem: bool = typer.Option(
+        False, "--so-triagem", help="Só baixa as fontes externas e gera os painéis de triagem"),
+    aprovar: List[str] = typer.Option(
+        [], "--aprovar", help="Fonte externa aprovada, 'nome:motivo' (repetível)"),
+    rejeitar: List[str] = typer.Option(
+        [], "--rejeitar", help="Fonte externa rejeitada, 'nome:motivo' (repetível)"),
+    semente: int = typer.Option(0, "--semente", help="Semente do sorteio de validação dos externos"),
+) -> None:
+    """Prepara o dataset de player: triagem das fontes externas (--so-triagem) e depois a montagem."""
+    from nfl_vision.treino import fontes, preparar
+
+    datasets = paths.datasets_dir()
+    saida = saida or datasets / preparar.PASTA_PADRAO
+    erros = (fontes.FonteIndisponivel, FileNotFoundError, FileExistsError, ValueError)
+
+    if so_triagem:
+        if aprovar or rejeitar:
+            raise typer.BadParameter("--so-triagem não aceita --aprovar nem --rejeitar",
+                                     param_hint="--so-triagem")
+        try:
+            pares = [(f, fontes.obter(f, datasets)) for f in fontes.EXTERNAS]
+            resumo = preparar.triagem(pares, saida, semente)
+        except erros as exc:
+            raise typer.BadParameter(str(exc)) from exc
+        tabela = Table(title="Triagem das fontes externas")
+        for coluna in ("fonte", "imagens", "painel"):
+            tabela.add_column(coluna)
+        for r in resumo:
+            tabela.add_row(r["fonte"], str(r["imagens"]), escape(str(r["painel"])))
+        console.print(tabela)
+        console.print("Veja os painéis e decida cada fonte: nfl-vision treino preparar "
+                      "--aprovar <fonte>:<motivo> --rejeitar <fonte>:<motivo>")
+        return
+
+    decididas = _decisoes_externas(aprovar, rejeitar)
+    faltam = [f.nome for f in fontes.EXTERNAS if f.nome not in decididas]
+    if faltam:
+        raise typer.BadParameter(
+            f"decida todas as fontes externas (faltam: {', '.join(faltam)}); "
+            "gere os painéis antes com --so-triagem", param_hint="--aprovar")
+    try:
+        decisoes = [preparar.Decisao(fontes.BASE, True, preparar.MOTIVO_BASE,
+                                     fontes.obter(fontes.BASE, datasets))]
+        for f in fontes.EXTERNAS:
+            aprovada, motivo = decididas[f.nome]
+            decisoes.append(preparar.Decisao(
+                f, aprovada, motivo, fontes.obter(f, datasets) if aprovada else None))
+        manifest = preparar.construir(saida, decisoes, semente)
+    except erros as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    tabela = Table(title=f"Dataset {saida.name}")
+    for coluna in ("split", "fonte", "imagens", "caixas"):
+        tabela.add_column(coluna)
+    for split, por_fonte in manifest["contagens"].items():
+        for nome, c in por_fonte.items():
+            tabela.add_row(split, nome, str(c["imagens"]), str(c["caixas"]))
+    console.print(tabela)
+    console.print(f"Dataset em: {escape(str(saida))}")
