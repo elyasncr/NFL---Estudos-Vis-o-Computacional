@@ -410,3 +410,46 @@ def treino_preparar(
             tabela.add_row(split, nome, str(c["imagens"]), str(c["caixas"]))
     console.print(tabela)
     console.print(f"Dataset em: {escape(str(saida))}")
+
+
+@treino_app.command("rodar")
+def treino_rodar(
+    nome: str = typer.Option(..., "--nome", help="Nome do treino (pasta em data/treinos/)"),
+    dataset: Optional[Path] = typer.Option(
+        None, "--dataset", help="Pasta gerada por `treino preparar`"),
+    epocas: Optional[int] = typer.Option(
+        None, "--epocas", min=1, help="Padrão: 100 (com parada antecipada, patience 20)"),
+    imgsz: Optional[int] = typer.Option(None, "--imgsz", min=32, help="Padrão: 1280"),
+    retomar: bool = typer.Option(
+        False, "--retomar", help="Continua do weights/last.pt do treino --nome"),
+) -> None:
+    """Ajuste fino do YOLO11m para player (Ultralytics, GPU local)."""
+    from nfl_vision.treino import rodar
+
+    if retomar and (dataset is not None or epocas is not None or imgsz is not None):
+        raise typer.BadParameter(
+            "--retomar usa os parâmetros do treino original; não informe --dataset, --epocas nem --imgsz",
+            param_hint="--retomar")
+    if not retomar and dataset is None:
+        raise typer.BadParameter("informe --dataset (ou --retomar para continuar um treino)",
+                                 param_hint="--dataset")
+    destino = paths.treinos_dir()
+    try:
+        if retomar:
+            pasta = rodar.retomar(nome, destino)
+        else:
+            ajustes = {k: v for k, v in (("epochs", epocas), ("imgsz", imgsz)) if v is not None}
+            pasta = rodar.treinar(dataset, nome, destino, parametros=ajustes)
+    except rodar.EntradaInvalida as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    except KeyboardInterrupt:
+        console.print("[yellow]interrompido; para continuar: "
+                      f"nfl-vision treino rodar --nome {escape(nome)} --retomar[/yellow]")
+        raise typer.Exit(130)
+    except Exception as exc:  # erro do Ultralytics/CUDA: mensagem curta; o manifest guarda o status
+        console.print(f"[red]treino falhou: {escape(type(exc).__name__)}: {escape(str(exc))}[/red]")
+        console.print("Se houver weights/last.pt, continue com: "
+                      f"nfl-vision treino rodar --nome {escape(nome)} --retomar")
+        raise typer.Exit(1)
+    console.print(f"Pesos: {escape(str(pasta / 'weights' / 'best.pt'))}")
+    console.print(f"Manifest: {escape(str(pasta / 'manifest.json'))}")

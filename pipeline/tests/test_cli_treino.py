@@ -6,7 +6,7 @@ from nfl_vision import cli, paths
 from nfl_vision.cli import app
 from nfl_vision.treino.fontes import EXTERNAS, POR_NOME
 from nfl_vision.treino.preparar import MOTIVO_BASE
-from treino_sintetico import dataset_base, dataset_externo
+from treino_sintetico import dataset_base, dataset_externo, dataset_preparado, instalar_yolo_falso
 
 runner = CliRunner()
 DECISOES = ["--aprovar", "evzn:futebol americano, caixas boas",
@@ -27,7 +27,7 @@ def _pasta():
 def test_treino_help_lista_comandos():
     r = runner.invoke(app, ["treino", "--help"])
     assert r.exit_code == 0, r.output
-    assert "preparar" in r.output
+    assert "preparar" in r.output and "rodar" in r.output
 
 
 def test_preparar_so_triagem(dados, monkeypatch):
@@ -105,3 +105,62 @@ def test_preparar_mapeamento_invalido_lista_classes(dados, monkeypatch):
 
     assert r.exit_code == 2, r.output
     assert "football-players" in r.output and "ball, referee, players" in r.output
+
+
+def test_rodar_treina_e_mostra_pesos(dados, tmp_path, monkeypatch):
+    monkeypatch.setenv("COLUMNS", "300")
+    chamadas = instalar_yolo_falso(monkeypatch)
+    ds = dataset_preparado(tmp_path / "ds")
+
+    r = runner.invoke(app, ["treino", "rodar", "--dataset", str(ds), "--nome", "player-v1",
+                            "--epocas", "5", "--imgsz", "640"])
+
+    assert r.exit_code == 0, r.output
+    assert chamadas[0][1]["epochs"] == 5 and chamadas[0][1]["imgsz"] == 640
+    assert (paths.treinos_dir() / "player-v1" / "weights" / "best.pt").exists()
+    assert "best.pt" in r.output
+
+
+def test_rodar_interrompido_e_retomado(dados, tmp_path, monkeypatch):
+    monkeypatch.setenv("COLUMNS", "300")
+    ds = dataset_preparado(tmp_path / "ds")
+    instalar_yolo_falso(monkeypatch, falhar=KeyboardInterrupt())
+    r = runner.invoke(app, ["treino", "rodar", "--dataset", str(ds), "--nome", "player-v1"])
+    assert r.exit_code == 130, r.output
+    assert "--retomar" in r.output
+
+    chamadas = instalar_yolo_falso(monkeypatch)
+    r = runner.invoke(app, ["treino", "rodar", "--nome", "player-v1", "--retomar"])
+    assert r.exit_code == 0, r.output
+    assert chamadas[-1][1] == {"resume": True}
+
+
+def test_rodar_falha_no_treino_sai_com_1(dados, tmp_path, monkeypatch):
+    monkeypatch.setenv("COLUMNS", "300")
+    instalar_yolo_falso(monkeypatch, falhar=RuntimeError("CUDA out of memory"))
+    ds = dataset_preparado(tmp_path / "ds")
+
+    r = runner.invoke(app, ["treino", "rodar", "--dataset", str(ds), "--nome", "player-v1"])
+
+    assert r.exit_code == 1, r.output
+    assert "CUDA out of memory" in r.output and "--retomar" in r.output
+
+
+def test_rodar_erros_de_entrada(dados, tmp_path, monkeypatch):
+    monkeypatch.setenv("COLUMNS", "300")
+    instalar_yolo_falso(monkeypatch)
+    ds = dataset_preparado(tmp_path / "ds")
+    sem_teste = dataset_preparado(tmp_path / "sem_teste")
+    for p in (sem_teste / "test" / "images").iterdir():
+        p.unlink()
+    casos = [
+        (["--nome", "x"], "--dataset"),
+        (["--dataset", str(tmp_path / "nada"), "--nome", "x"], "data.yaml"),
+        (["--dataset", str(sem_teste), "--nome", "x"], "split 'test' sem imagens"),
+        (["--nome", "x", "--retomar"], "last.pt"),
+        (["--nome", "x", "--retomar", "--dataset", str(ds)], "--retomar usa os parâmetros"),
+    ]
+    for args, trecho in casos:
+        r = runner.invoke(app, ["treino", "rodar", *args])
+        assert r.exit_code == 2, (args, r.output)
+        assert trecho in r.output, (args, r.output)

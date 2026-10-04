@@ -24,3 +24,7 @@ def datasets_dir() -> Path:
 
 def avaliacoes_dir() -> Path:
     return dados_dir() / "avaliacoes"
+
+
+def treinos_dir() -> Path:
+    return dados_dir() / "treinos"
