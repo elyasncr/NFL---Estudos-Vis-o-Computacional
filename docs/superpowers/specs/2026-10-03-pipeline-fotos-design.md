@@ -168,11 +168,12 @@ Caixa de 2 px na cor `team_color` do time, rótulo `KC 87 TE` (deslocado para a 
 ## 9. Avaliação
 
 - **Dataset de detecção:** fork no workspace `elyas-carvalho` do Universe `nflplayerdetection-mjrl1/nfl-player-model` (338 imagens, classes `player`, `referee`, `ball`; CC BY 4.0, citar a fonte). A avaliação usa só o split de teste; `ball` é ignorada.
-- `eval detect`: no split de teste, mAP@0.5 da classe jogador (as detecções de `pessoa` não descartadas pelo nosso pipeline contra `player`) e a taxa de árbitros indevidamente mantidos como jogador.
-- `eval jersey`: acurácia de número num dataset de recortes de números do Roboflow Universe (outro esporte, como linha de base aproximada) até existirem recortes próprios de NFL; reporta também a taxa de `null`.
+- `eval detect`: no split de teste, mAP@0.5 da classe jogador (as detecções de `pessoa` não descartadas pelo nosso pipeline contra `player`) e a fração de árbitros cobertos por caixa de jogador (IoU ≥ 0,5). Todos os preditores usam a mesma confiança mínima (`--conf`, padrão `detector_conf` da configuração); o JSON salvo registra dataset, split, `conf`, configuração, versão e, por preditor, o pós-processamento aplicado. É regravado após cada preditor, e a falha de um preditor fica registrada sem interromper os outros.
+- `eval jersey`: acurácia de número num dataset de recortes de números do Roboflow Universe (outro esporte, como linha de base aproximada) até existirem recortes próprios de NFL; reporta também a taxa de `null` e quantos rótulos ilegíveis foram excluídos.
 - Datasets baixados por script com o pacote `roboflow` e a API key em `ROBOFLOW_API_KEY` (`.env`), em `data/datasets/`. O MCP do Roboflow é usado só durante o desenvolvimento, para inspecionar e exportar.
 - **Benchmarks** (opcionais, fora de `analyze`), todos no mesmo split de teste e com a mesma métrica:
-  - `--benchmark rfdetr`: RF-DETR pré-treinado COCO rodando localmente (pacote `rfdetr`), comparação de arquitetura.
+  - `--benchmark yolo-bruto`: o mesmo YOLO do pipeline (pessoa, COCO), sem filtros de campo nem remoção de árbitro. "nosso" contra `yolo-bruto` mede o efeito dos filtros.
+  - `--benchmark rfdetr`: RF-DETR pré-treinado COCO rodando localmente (pacote `rfdetr`), sem pós-processamento. A comparação de arquitetura é `yolo-bruto` contra `rfdetr` (os dois sem filtros).
   - `--benchmark roboflow-nfl`: um modelo treinado do próprio projeto `nfl-player-model`, via inferência hospedada do Roboflow (`inference-sdk`, API key no header). Só envia imagens do split de teste do dataset público, nunca mídias do usuário. Compara "detector genérico + filtros" com "modelo treinado em NFL".
 - Acurácia de time e ponta a ponta dependem de 10–20 capturas de jogos conhecidos rotuladas pelo usuário; ficam para quando existirem.
 
