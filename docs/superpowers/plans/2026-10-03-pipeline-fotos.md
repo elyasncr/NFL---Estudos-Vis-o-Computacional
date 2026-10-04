@@ -1,5 +1,7 @@
 # Pipeline de identificação em fotos — Plano de implementação
 
+> Nota: plano histórico; a spec (`docs/superpowers/specs/2026-10-03-pipeline-fotos-design.md`) e o código o substituem onde houver diferença (ex.: filtro de fora de campo, OCR, roster).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** CLI `nfl-vision` que recebe uma foto de partida da NFL e devolve cada jogador com time, número, posição e nome (`analise.json` + imagem anotada), com avaliação de detecção e de OCR.

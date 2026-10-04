@@ -31,10 +31,11 @@ Os resultados ficam em `data/runs/<id>/`: `analise.json`, `anotada.png`, `manife
 ## Avaliação
 
     uv run nfl-vision eval baixar --workspace <ws> --projeto <slug> --versao <n> --formato yolov11
+    uv run nfl-vision eval baixar --workspace taiseis-workspace --projeto jersey-number-ijbaq --versao 1 --formato folder
     uv run nfl-vision eval detect --dataset ../data/datasets/<pasta> --split test --benchmark yolo-bruto --benchmark rfdetr
     uv run nfl-vision eval jersey --dataset ../data/datasets/<pasta> --split test
 
-O Roboflow exporta o split de validação como `valid`.
+Os downloads ficam em `../data/datasets/<projeto>-v<n>-<formato>`, o caminho que vai em `--dataset`. O Roboflow exporta o split de validação como `valid`.
 
 ## Testes
 
