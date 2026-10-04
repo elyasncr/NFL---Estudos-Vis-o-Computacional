@@ -10,9 +10,8 @@ import cv2
 
 from nfl_vision import paths, teams
 from nfl_vision.config import Config
-from nfl_vision.cores import hex_para_bgr
 from nfl_vision.montagem import montar
-from nfl_vision.render import desenhar
+from nfl_vision.render import cores_de_exibicao, desenhar
 from nfl_vision.runner import (
     Estado, Etapa, EtapaFalhou, Runner, atualizar_manifest, gravar_json, gravar_texto, ler_manifest,
 )
@@ -69,7 +68,7 @@ def finalizar(estado: Estado) -> Analise:
     gravar_texto(estado.run_dir / "analise.json", analise.model_dump_json(indent=2))
 
     times_df = teams.carregar_times(paths.cache_dir())
-    cores = {t: hex_para_bgr(teams.cores(t, times_df)[0]) for t in estado.contexto.times}
+    cores = cores_de_exibicao({t: teams.cores(t, times_df) for t in estado.contexto.times})
     caixas = {d.det_id: d.bbox for d in estado.saidas["detect"].deteccoes}
     anotada = desenhar(estado.imagem(), analise.jogadores, caixas, cores)
     ok, buf = cv2.imencode(".png", anotada)

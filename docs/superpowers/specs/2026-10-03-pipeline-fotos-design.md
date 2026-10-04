@@ -145,7 +145,7 @@ Lê com Pillow, aplica `ImageOps.exif_transpose`, converte para array BGR (OpenC
 - Número sem correspondência → `motivo = numero_fora_do_roster`, campos `null`.
 
 ### `render`
-Caixa de 2 px na cor `team_color` do time, rótulo `KC 87 TE` (deslocado para a esquerda quando não cabe na borda direita; texto preto se a luminância da cor for > 150, senão branco). Jogador com time ou número desconhecido em `#6B7480` com os campos conhecidos (ex.: `KC ?`). Árbitros e descartados não são desenhados.
+Caixa na cor de exibição do time, com contorno escuro por baixo e espessura proporcional ao tamanho da imagem (mínimo 2 px, ~1 px a cada 640 px do maior lado). Cor de exibição (`render.cores_de_exibicao`), na ordem dos times informados: a primeira cor oficial (`team_color`, depois `team_color2`) que contraste com o gramado (ΔE ≥ 30 de `#2E6B3F`, luminância ≥ 60) e difira das cores já escolhidas (ΔE ≥ 25); se nenhuma servir, branco (ex.: CIN × CLE → CIN laranja, CLE branco). Rótulo `KC 87 TE` (deslocado para a esquerda quando não cabe na borda direita; texto preto se a luminância da cor for > 150, senão branco). Jogador com número desconhecido fica na cor do time com `?` no rótulo (ex.: `KC ?`); só jogador sem time fica em `#6B7480`. Árbitros e descartados não são desenhados.
 
 ## 7. Tratamento de erros
 
