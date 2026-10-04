@@ -25,6 +25,7 @@ class CaixaGabarito:
 class Gabarito:
     times: tuple[str, str]
     caixas: list[CaixaGabarito]
+    dataset: str | None = None  # opcional: "<nome do dataset>/<split>" usado para rotular
 
 
 def _caixa_do_json(caminho: Path, i: int, c) -> CaixaGabarito:
@@ -46,7 +47,9 @@ def _caixa_do_json(caminho: Path, i: int, c) -> CaixaGabarito:
 
 def carregar_gabarito(caminho: Path) -> Gabarito:
     """Lê o gabarito rotulado à mão (ver data/avaliacoes/time-gabarito-cin-cle.json):
-    `{"times": [A, B], "caixas": [{"imagem", "bbox", "time": A|B|null}, ...]}`."""
+    `{"times": [A, B], "caixas": [{"imagem", "bbox", "time": A|B|null}, ...]}`. `dataset`
+    (opcional) é "<nome do dataset>/<split>" usado para rotular; serve só para a CLI avisar
+    se `--dataset`/`--split` apontam para outro lugar."""
     try:
         dados = json.loads(caminho.read_text("utf-8"))
     except json.JSONDecodeError as exc:
@@ -64,7 +67,9 @@ def carregar_gabarito(caminho: Path) -> Gabarito:
         if caixa.time is not None and caixa.time not in times:
             raise ValueError(
                 f"{caminho}: caixa {i}: time '{caixa.time}' não está em {times}")
-    return Gabarito(times=(times[0], times[1]), caixas=caixas)
+    dataset = dados.get("dataset")
+    return Gabarito(times=(times[0], times[1]), caixas=caixas,
+                    dataset=dataset if isinstance(dataset, str) else None)
 
 
 def _casar_um_a_um(caixas: list[CaixaGabarito], deteccoes: list[Deteccao]) -> dict[int, Deteccao]:

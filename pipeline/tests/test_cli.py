@@ -727,6 +727,68 @@ def test_eval_time_detector_tipo_yolo_vai_na_config_gravada(dados, tmp_path, mon
     assert salvo["config"]["detector_tipo"] == "yolo"
 
 
+def test_eval_time_imagem_do_gabarito_ausente(dados, tmp_path, monkeypatch):
+    from sintetico import campo
+
+    monkeypatch.setenv("COLUMNS", "300")
+    ds = _dataset_imagens(tmp_path / "ds", {"a.jpg": campo()})
+    gabarito = _gabarito_json(tmp_path / "gabarito.json", ("KC", "BUF"), [
+        {"imagem": "a.jpg", "bbox": [0.0, 0.0, 1.0, 1.0], "time": "KC"},
+        {"imagem": "falta.jpg", "bbox": [0.0, 0.0, 1.0, 1.0], "time": "BUF"},
+        {"imagem": "falta2.jpg", "bbox": [0.0, 0.0, 1.0, 1.0], "time": None},  # sem time: ignorada
+    ])
+
+    r = runner.invoke(app, ["eval", "time", "--gabarito", str(gabarito), "--dataset", str(ds)])
+
+    assert r.exit_code == 2, r.output
+    assert "falta.jpg" in r.output
+    assert "falta2.jpg" not in r.output  # caixa sem time não é checada
+
+
+def test_eval_time_avisa_dataset_do_gabarito_diferente(dados, tmp_path, monkeypatch):
+    import json
+
+    from sintetico import VERMELHO_KC, campo, jogador
+
+    monkeypatch.setenv("COLUMNS", "300")
+    img = campo()
+    c0 = jogador(img, 100, 300, VERMELHO_KC)
+    ds = _dataset_imagens(tmp_path / "ds", {"a.jpg": img})
+    gabarito = tmp_path / "gabarito.json"
+    gabarito.write_text(json.dumps({
+        "times": ["KC", "BUF"], "dataset": "outro-dataset/valid",
+        "caixas": [{"imagem": "a.jpg", "bbox": list(c0), "time": "KC"}],
+    }), encoding="utf-8")
+    _detector_falso_time(monkeypatch, [c0])
+
+    r = runner.invoke(app, ["eval", "time", "--gabarito", str(gabarito), "--dataset", str(ds)])
+
+    assert r.exit_code == 0, r.output
+    assert "outro-dataset/valid" in r.output
+
+
+def test_eval_time_nao_avisa_quando_dataset_do_gabarito_corresponde(dados, tmp_path, monkeypatch):
+    import json
+
+    from sintetico import VERMELHO_KC, campo, jogador
+
+    monkeypatch.setenv("COLUMNS", "300")
+    img = campo()
+    c0 = jogador(img, 100, 300, VERMELHO_KC)
+    ds = _dataset_imagens(tmp_path / "ds", {"a.jpg": img})
+    gabarito = tmp_path / "gabarito.json"
+    gabarito.write_text(json.dumps({
+        "times": ["KC", "BUF"], "dataset": f"{ds.name}/test",
+        "caixas": [{"imagem": "a.jpg", "bbox": list(c0), "time": "KC"}],
+    }), encoding="utf-8")
+    _detector_falso_time(monkeypatch, [c0])
+
+    r = runner.invoke(app, ["eval", "time", "--gabarito", str(gabarito), "--dataset", str(ds)])
+
+    assert r.exit_code == 0, r.output
+    assert "rotulado em" not in r.output
+
+
 def test_eval_time_erros_de_entrada(dados, tmp_path, monkeypatch):
     from sintetico import campo
 

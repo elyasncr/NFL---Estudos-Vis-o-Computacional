@@ -229,6 +229,19 @@ def test_carregar_gabarito(tmp_path):
     assert len(gabarito.caixas) == 2
     assert gabarito.caixas[0] == eval_time.CaixaGabarito("a.jpg", (1.0, 2.0, 3.0, 4.0), "KC")
     assert gabarito.caixas[1].time is None
+    assert gabarito.dataset is None  # campo opcional; ausente no gabarito mínimo
+
+
+def test_carregar_gabarito_com_dataset(tmp_path):
+    import json
+
+    caminho = tmp_path / "gabarito.json"
+    caminho.write_text(json.dumps({**GABARITO_MINIMO, "dataset": "treino-player-v1/test"}),
+                       encoding="utf-8")
+
+    gabarito = eval_time.carregar_gabarito(caminho)
+
+    assert gabarito.dataset == "treino-player-v1/test"
 
 
 @pytest.mark.parametrize("dados, trecho", [

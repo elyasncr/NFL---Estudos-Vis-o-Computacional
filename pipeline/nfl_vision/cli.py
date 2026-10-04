@@ -431,6 +431,18 @@ def eval_time_cmd(
         raise typer.BadParameter(_pasta_de_split_ausente(dataset, pasta_imagens),
                                  param_hint="--split")
 
+    nomes_rotulados = sorted({c.imagem for c in gab.caixas if c.time is not None})
+    faltando = [n for n in nomes_rotulados if not (pasta_imagens / n).is_file()]
+    if faltando:
+        raise typer.BadParameter(
+            f"imagens do gabarito ausentes em {pasta_imagens}: {', '.join(faltando)}",
+            param_hint="--gabarito")
+    dataset_esperado = f"{dataset.name}/{split}"
+    if gab.dataset is not None and gab.dataset != dataset_esperado:
+        console.print(
+            f"[yellow]gabarito foi rotulado em '{escape(gab.dataset)}', mas --dataset/--split "
+            f"apontam para '{escape(dataset_esperado)}'[/yellow]")
+
     ajustes = _ajustes_do_detector(detector_tipo, None)
     cfg = Config(**ajustes) if ajustes else Config()
 
