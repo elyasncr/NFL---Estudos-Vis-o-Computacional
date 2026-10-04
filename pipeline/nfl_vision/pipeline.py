@@ -14,7 +14,7 @@ from nfl_vision.cores import hex_para_bgr
 from nfl_vision.montagem import montar
 from nfl_vision.render import desenhar
 from nfl_vision.runner import (
-    Estado, Etapa, Runner, atualizar_manifest, gravar_json, gravar_texto, ler_manifest,
+    Estado, Etapa, EtapaFalhou, Runner, atualizar_manifest, gravar_json, gravar_texto, ler_manifest,
 )
 from nfl_vision.schemas import (
     Analise, Contexto, Correcao, DetectOut, IngestOut, JerseyOut, RosterOut, TeamOut,
@@ -150,4 +150,11 @@ def corrigir(analise_id: str, det_id: int, time: str | None = None,
         timestamp=datetime.now(timezone.utc).isoformat(),
     ).model_dump(mode="json"))
     gravar_json(arquivo, lista)
-    return reprocessar(analise_id, "roster")[1]
+    try:
+        return reprocessar(analise_id, "roster")[1]
+    except EtapaFalhou as exc:
+        raise EtapaFalhou(
+            exc.etapa,
+            f"{exc.mensagem} (a correção foi salva e será aplicada no próximo reprocessamento)",
+            exc.analise_id,
+        ) from exc

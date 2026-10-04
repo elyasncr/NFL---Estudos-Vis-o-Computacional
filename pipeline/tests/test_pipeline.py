@@ -113,6 +113,22 @@ def test_finalizar_falha_ao_gerar_png(dados, foto_sintetica, modelos_falsos, mon
         pipeline.analisar(foto_sintetica[0], CTX)
 
 
+def test_corrigir_com_reprocessamento_falho_avisa_que_a_correcao_foi_salva(
+    dados, foto_sintetica, modelos_falsos, monkeypatch
+):
+    from nfl_vision.runner import EtapaFalhou
+
+    run_dir, _ = pipeline.analisar(foto_sintetica[0], CTX)
+    _quebrar_roster(monkeypatch)
+
+    with pytest.raises(EtapaFalhou, match="correção foi salva") as erro:
+        pipeline.corrigir(run_dir.name, det_id=3, numero=14)
+
+    assert erro.value.etapa == "roster"
+    assert erro.value.analise_id == run_dir.name
+    assert json.loads((run_dir / "corrections.json").read_text("utf-8"))[0]["numero"] == 14
+
+
 def test_nova_deteccao_arquiva_correcoes(dados, foto_sintetica, modelos_falsos):
     run_dir, _ = pipeline.analisar(foto_sintetica[0], CTX)
     pipeline.corrigir(run_dir.name, det_id=3, numero=14)

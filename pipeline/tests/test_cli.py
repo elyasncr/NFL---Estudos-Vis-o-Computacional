@@ -97,6 +97,54 @@ def test_correct_com_erro_de_etapa_sugere_from(dados, foto_sintetica, modelos_fa
     assert f"--run {run_id} --from roster" in r.output
 
 
+def test_finalizar_falha_sem_id_conhecido_nao_sugere_from(
+    dados, foto_sintetica, modelos_falsos, monkeypatch
+):
+    def quebrar(estado):
+        raise RuntimeError("falha ao gerar anotada.png")
+
+    monkeypatch.setattr(cli.pipeline, "finalizar", quebrar)
+    r = runner.invoke(app, ["analyze", str(foto_sintetica[0]), *BASE])
+
+    assert r.exit_code == 1, r.output
+    assert "falha ao gerar anotada.png" in r.output
+    assert "--from" not in r.output
+
+
+def test_analyze_from_com_finalizar_falho_sugere_from_roster(
+    dados, foto_sintetica, modelos_falsos, monkeypatch
+):
+    runner.invoke(app, ["analyze", str(foto_sintetica[0]), *BASE])
+    run_id = next(paths.runs_dir().iterdir()).name
+
+    def quebrar(estado):
+        raise RuntimeError("falha ao gerar anotada.png")
+
+    monkeypatch.setattr(cli.pipeline, "finalizar", quebrar)
+    r = runner.invoke(app, ["analyze", "--run", run_id, "--from", "jersey"])
+
+    assert r.exit_code == 1, r.output
+    assert "falha ao gerar anotada.png" in r.output
+    assert f"--run {run_id} --from roster" in r.output
+
+
+def test_correct_com_finalizar_falho_sugere_from_roster(
+    dados, foto_sintetica, modelos_falsos, monkeypatch
+):
+    runner.invoke(app, ["analyze", str(foto_sintetica[0]), *BASE])
+    run_id = next(paths.runs_dir().iterdir()).name
+
+    def quebrar(estado):
+        raise teams.TimesIndisponiveis("times indisponíveis (sem rede)")
+
+    monkeypatch.setattr(cli.pipeline, "finalizar", quebrar)
+    r = runner.invoke(app, ["correct", run_id, "--det", "3", "--numero", "14"])
+
+    assert r.exit_code == 1, r.output
+    assert "times indisponíveis" in r.output
+    assert f"--run {run_id} --from roster" in r.output
+
+
 def test_correct_apos_reprocessamento_falho(dados, foto_sintetica, modelos_falsos, monkeypatch):
     monkeypatch.setenv("COLUMNS", "200")
     runner.invoke(app, ["analyze", str(foto_sintetica[0]), *BASE])
@@ -146,6 +194,34 @@ def test_combinacoes_invalidas_de_opcoes(dados, tmp_path, monkeypatch):
         r = runner.invoke(app, args)
         assert r.exit_code == 2, (args, r.output)
         assert trecho in r.output, (args, r.output)
+
+
+def test_eval_baixar_sem_chave_da_erro_claro(dados, tmp_path, monkeypatch):
+    monkeypatch.setenv("COLUMNS", "300")
+    monkeypatch.delenv("ROBOFLOW_API_KEY", raising=False)
+    monkeypatch.setattr(cli, "load_dotenv", lambda: None)  # um .env local não pode trazer a chave
+
+    r = runner.invoke(
+        app, ["eval", "baixar", "--workspace", "ws", "--projeto", "proj", "--versao", "1"])
+
+    assert r.exit_code == 2, r.output
+    assert "ROBOFLOW_API_KEY" in r.output
+
+
+def test_eval_baixar_erro_de_rede_reporta_tipo_e_mensagem(dados, tmp_path, monkeypatch):
+    from nfl_vision.eval import datasets as eval_datasets
+
+    monkeypatch.setenv("COLUMNS", "300")
+
+    def quebrar(*a, **k):
+        raise ConnectionError("timeout")
+
+    monkeypatch.setattr(eval_datasets, "baixar", quebrar)
+    r = runner.invoke(
+        app, ["eval", "baixar", "--workspace", "ws", "--projeto", "proj", "--versao", "1"])
+
+    assert r.exit_code == 2, r.output
+    assert "ConnectionError" in r.output and "timeout" in r.output
 
 
 def test_eval_help_lista_comandos():

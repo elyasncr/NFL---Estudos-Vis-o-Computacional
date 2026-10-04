@@ -65,14 +65,26 @@ def _imprimir(analise: Analise, run_dir: Path) -> None:
 
 
 @contextmanager
-def _tratando_falha_de_etapa():
-    """Erro de etapa vira mensagem com o comando para retomar; Ctrl+C sai com 130."""
+def _tratando_falha_de_etapa(analise_id: Optional[str] = None):
+    """Erro de etapa vira mensagem com o comando para retomar; Ctrl+C sai com 130.
+
+    `analise_id`, quando conhecido (reprocessamento ou correção), também cobre
+    falhas fora de uma etapa (ex.: `pipeline.finalizar`, depois que o runner já
+    terminou): o erro não vem embrulhado em `EtapaFalhou`, mas a análise pode
+    ser retomada a partir de `roster` (a última etapa do runner).
+    """
     try:
         yield
     except EtapaFalhou as exc:
         console.print(f"[red]{escape(str(exc))}[/red]")
         console.print(
             f"Depois de resolver, rode: nfl-vision analyze --run {exc.analise_id} --from {exc.etapa}")
+        raise typer.Exit(1)
+    except (RuntimeError, teams.TimesIndisponiveis) as exc:
+        console.print(f"[red]{escape(str(exc))}[/red]")
+        if analise_id is not None:
+            console.print(
+                f"Depois de resolver, rode: nfl-vision analyze --run {analise_id} --from roster")
         raise typer.Exit(1)
     except KeyboardInterrupt:
         console.print("[yellow]interrompido[/yellow]")
@@ -93,7 +105,7 @@ def analyze(
     a_partir_de: Optional[str] = typer.Option(None, "--from", help="Etapa inicial do reprocessamento"),
 ) -> None:
     """Analisa uma foto ou reprocessa uma análise a partir de uma etapa."""
-    with _tratando_falha_de_etapa():
+    with _tratando_falha_de_etapa(run):
         run_dir, analise = _analisar_ou_reprocessar(foto, times, temporada, semana, run, a_partir_de)
     _imprimir(analise, run_dir)
 
@@ -134,7 +146,7 @@ def correct(
     numero: Optional[int] = typer.Option(None, "--numero", min=0, max=99),
 ) -> None:
     """Corrige o time e/ou o número de um jogador e refaz a consulta ao roster."""
-    with _tratando_falha_de_etapa():
+    with _tratando_falha_de_etapa(analise_id):
         try:
             analise = pipeline.corrigir(analise_id, det, time, numero)
         except (ValueError, FileNotFoundError) as exc:
@@ -174,7 +186,15 @@ def eval_baixar(
     """Baixa uma versão de dataset do Roboflow para data/datasets/."""
     from nfl_vision.eval.datasets import baixar
 
-    console.print(f"Dataset em: {baixar(workspace, projeto, versao, formato, paths.datasets_dir())}")
+    try:
+        destino = baixar(workspace, projeto, versao, formato, paths.datasets_dir())
+    except RuntimeError as exc:  # chave ausente (chave_roboflow)
+        raise typer.BadParameter(str(exc), param_hint="--workspace") from exc
+    except Exception as exc:  # erro de rede/download do Roboflow
+        raise typer.BadParameter(
+            f"falha ao baixar o dataset: {type(exc).__name__}: {exc}", param_hint="--workspace"
+        ) from exc
+    console.print(f"Dataset em: {destino}")
 
 
 def _carregar_deteccao(dataset: Path, split: str, classe_alvo: str):
