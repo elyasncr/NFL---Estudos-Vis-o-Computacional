@@ -191,3 +191,19 @@ def test_classes_coco_fallback_para_rfdetr_antigo(monkeypatch):
     monkeypatch.setitem(sys.modules, "rfdetr.util.coco_classes", antigo)
 
     assert preditores._classes_coco() == {1: "person", 2: "bicycle"}
+
+
+def test_rotulo_dos_pesos():
+    assert preditores.rotulo_pesos("yolo11m.pt") == "yolo11m"
+    assert preditores.rotulo_pesos("../data/treinos/player-v1/weights/best.pt") == "player-v1"
+    assert preditores.rotulo_pesos("/x/treinos/player-v1/weights/last.pt") == "player-v1/last"
+    assert preditores.rotulo_pesos("pesos/meu-detector.pt") == "meu-detector"
+
+
+def test_nomes_dos_preditores_indicam_os_pesos():
+    padrao = Config()
+    assert preditores.PreditorNosso(padrao).nome == "nosso (yolo11m + filtros + árbitro)"
+    assert preditores.PreditorYoloBruto(padrao).nome == "yolo11m bruto (COCO, pessoa)"
+    ajustado = Config(detector_pesos="data/treinos/player-v1/weights/best.pt")
+    assert preditores.PreditorNosso(ajustado).nome == "nosso (player-v1 + filtros + árbitro)"
+    assert preditores.PreditorYoloBruto(ajustado).nome == "yolo bruto (player-v1)"

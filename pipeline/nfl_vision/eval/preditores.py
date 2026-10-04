@@ -22,12 +22,21 @@ class Preditor(Protocol):
     def prever(self, imagem: Path) -> list[Predicao]: ...
 
 
+def rotulo_pesos(pesos: str) -> str:
+    """Nome curto dos pesos para o nome do preditor: `.../player-v1/weights/best.pt` vira `player-v1`."""
+    caminho = Path(pesos)
+    if caminho.parent.name == "weights" and caminho.stem in ("best", "last"):
+        treino = caminho.parent.parent.name
+        return treino if caminho.stem == "best" else f"{treino}/last"
+    return caminho.stem
+
+
 class PreditorNosso:
-    nome = "nosso (yolo11m + filtros + árbitro)"
     pos_processamento = "filtros de campo + remoção de árbitro"
 
     def __init__(self, cfg: Config):
         self.cfg = cfg
+        self.nome = f"nosso ({rotulo_pesos(cfg.detector_pesos)} + filtros + árbitro)"
 
     def prever(self, imagem: Path) -> list[Predicao]:
         img = carregar_imagem(imagem)
@@ -44,11 +53,13 @@ class PreditorNosso:
 class PreditorYoloBruto:
     """O mesmo detector do pipeline, sem filtros de campo nem remoção de árbitro."""
 
-    nome = "yolo11m bruto (COCO, pessoa)"
     pos_processamento = "nenhum"
 
     def __init__(self, cfg: Config):
         self.cfg = cfg
+        padrao = cfg.detector_pesos == Config().detector_pesos
+        self.nome = ("yolo11m bruto (COCO, pessoa)" if padrao
+                     else f"yolo bruto ({rotulo_pesos(cfg.detector_pesos)})")
 
     def prever(self, imagem: Path) -> list[Predicao]:
         return [(d.confianca, d.bbox) for d in detectar_pessoas(carregar_imagem(imagem), self.cfg)]

@@ -407,3 +407,60 @@ def test_file_not_found_na_analise_nova_nao_culpa_run(dados, foto_sintetica, mon
 
     assert r.exit_code != 2, r.output
     assert isinstance(r.exception, FileNotFoundError)
+
+
+def test_eval_detect_com_pesos_ajustados(dados, tmp_path, monkeypatch):
+    import hashlib
+
+    monkeypatch.setenv("COLUMNS", "300")
+    _detector_falso(monkeypatch)
+    pesos = tmp_path / "treinos" / "player-v1" / "weights" / "best.pt"
+    pesos.parent.mkdir(parents=True)
+    pesos.write_bytes(b"ajustado")
+    ds = _dataset_deteccao(tmp_path / "ds")
+
+    r = runner.invoke(app, ["eval", "detect", "--dataset", str(ds), "--pesos", str(pesos),
+                            "--benchmark", "yolo-bruto"])
+
+    assert r.exit_code == 0, r.output
+    salvo = _ler_avaliacao("detect")
+    assert salvo["config"]["detector_pesos"] == str(pesos.resolve())
+    assert salvo["pesos_sha256"] == hashlib.sha256(b"ajustado").hexdigest()
+    assert [x["preditor"] for x in salvo["resultados"]] == [
+        "nosso (player-v1 + filtros + árbitro)", "yolo bruto (player-v1)"]
+
+
+def test_eval_detect_pesos_inexistentes(dados, tmp_path, monkeypatch):
+    monkeypatch.setenv("COLUMNS", "300")
+    ds = _dataset_deteccao(tmp_path / "ds")
+    r = runner.invoke(app, ["eval", "detect", "--dataset", str(ds), "--pesos", str(tmp_path / "nao.pt")])
+    assert r.exit_code == 2, r.output
+    assert "pesos não encontrados" in r.output
+
+
+def test_analyze_com_detector_grava_os_pesos_na_config(dados, foto_sintetica, modelos_falsos, tmp_path):
+    import json
+
+    pesos = tmp_path / "best.pt"
+    pesos.write_bytes(b"ajustado")
+
+    r = runner.invoke(app, ["analyze", str(foto_sintetica[0]), *BASE, "--detector", str(pesos)])
+
+    assert r.exit_code == 0, r.output
+    run_dir = next(paths.runs_dir().iterdir())
+    manifest = json.loads((run_dir / "manifest.json").read_text("utf-8"))
+    assert manifest["config"]["detector_pesos"] == str(pesos.resolve())
+
+
+def test_analyze_detector_erros(dados, foto_sintetica, tmp_path, monkeypatch):
+    monkeypatch.setenv("COLUMNS", "300")
+    casos = [
+        (["analyze", str(foto_sintetica[0]), *BASE, "--detector", str(tmp_path / "nao.pt")],
+         "pesos não encontrados"),
+        (["analyze", "--run", "x", "--from", "jersey", "--detector", str(foto_sintetica[0])],
+         "--detector só vale para análise nova"),
+    ]
+    for args, trecho in casos:
+        r = runner.invoke(app, args)
+        assert r.exit_code == 2, (args, r.output)
+        assert trecho in r.output, (args, r.output)
