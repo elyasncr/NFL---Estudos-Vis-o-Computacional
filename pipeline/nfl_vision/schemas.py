@@ -39,6 +39,8 @@ class Deteccao(BaseModel):
 class DetectOut(BaseModel):
     deteccoes: list[Deteccao]
     pesos_sha256: str | None = None
+    # rótulo do detector que de fato rodou (ex.: "rfdetr-base@1120"); None em artefatos antigos
+    detector: str | None = None
 
 
 class TimeDet(BaseModel):

@@ -174,3 +174,19 @@ def test_analise_com_yolo_registra_os_pesos_como_detector(dados, foto_sintetica,
 
     assert analise.modelos["detector"] == "yolo11m"
     assert ler_manifest(run_dir)["config"]["detector_tipo"] == "yolo"
+
+
+def test_reprocessar_de_team_usa_o_detector_gravado_no_detect_antigo(
+    dados, foto_sintetica, modelos_falsos
+):
+    """O rótulo do detector vem do detect.json (o que realmente rodou), não da config atual."""
+    run_dir, analise = pipeline.analisar(foto_sintetica[0], CTX, Config(detector_tipo="yolo"))
+    assert analise.modelos["detector"] == "yolo11m"
+
+    manifest = ler_manifest(run_dir)
+    manifest["config"]["detector_tipo"] = "rfdetr"
+    (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    _, analise2 = pipeline.reprocessar(run_dir.name, "team")
+
+    assert analise2.modelos["detector"] == "yolo11m"

@@ -36,10 +36,13 @@ def montar(estado) -> Analise:
             corrigido_pelo_usuario=det_id in corrigidos,
         ))
 
+    # o rótulo vem do detect.json (o detector que de fato rodou); artefatos antigos, sem o
+    # campo, caem na config atual (pode já não corresponder ao detect, mas é o melhor disponível)
+    detector = estado.saidas["detect"].detector or rotulo_detector(estado.config)
     return Analise(
         analise_id=estado.run_dir.name,
         midia={"tipo": "foto", "largura": ingest.largura, "altura": ingest.altura},
         contexto=estado.contexto,
-        modelos={"detector": rotulo_detector(estado.config), "ocr": "paddleocr"},
+        modelos={"detector": detector, "ocr": "paddleocr"},
         jogadores=jogadores,
     )

@@ -207,4 +207,5 @@ def executar(estado) -> DetectOut:
     return DetectOut(
         deteccoes=aplicar_filtros(detectar_pessoas(img, cfg), img, cfg),
         pesos_sha256=sha256_pesos(caminho_pesos(cfg)),
+        detector=rotulo_detector(cfg),
     )
