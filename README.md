@@ -28,6 +28,8 @@ O PyTorch vem do índice CUDA 12.8 (necessário para placas Blackwell, como a RT
 
 Os resultados ficam em `data/runs/<id>/`: `analise.json`, `anotada.png`, `manifest.json` e a saída de cada etapa.
 
+O detector padrão é o RF-DETR base (COCO) em 1120 px, com limiar 0,4; os pesos (~355 MB) são baixados na primeira execução. Para usar o YOLO11m: `--detector-tipo yolo`. Comparação e escolha da resolução em `docs/avaliacao/2026-10-detector-rfdetr.md`.
+
 ## Avaliação
 
     uv run nfl-vision eval baixar --workspace <ws> --projeto <slug> --versao <n> --formato yolov11
@@ -39,7 +41,7 @@ Os downloads ficam em `../data/datasets/<projeto>-v<n>-<formato>`, o caminho que
 
 ## Detector ajustado (opcional)
 
-O padrão é o YOLO11m do COCO (`yolo11m.pt`). Para ajustá-lo à classe `player` na GPU local:
+O ajuste fino é feito sobre o YOLO11m do COCO (`yolo11m.pt`); no jogo separado ele não superou o modelo original (`docs/avaliacao/2026-10-detector-ajustado.md`). Para ajustá-lo à classe `player` na GPU local:
 
     uv run nfl-vision treino preparar --so-triagem
     # veja ../data/datasets/treino-player-v1/triagem/*.jpg e decida cada fonte externa

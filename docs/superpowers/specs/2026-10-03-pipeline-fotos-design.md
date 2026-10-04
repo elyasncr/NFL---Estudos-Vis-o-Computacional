@@ -101,7 +101,7 @@ nfl-vision eval baixar --workspace <ws> --projeto <slug> --versao <n> --formato 
 Lê com Pillow, aplica `ImageOps.exif_transpose`, converte para array BGR (OpenCV). Aceita JPG e PNG; outros formatos (incluindo vídeo) são recusados com mensagem clara.
 
 ### `detect`
-- YOLO11m pré-treinado COCO, classe pessoa, `imgsz = 1280`, `conf ≥ 0,25`.
+- Detector selecionável por `detector_tipo` (spec `2026-10-04-detector-rfdetr-design.md`). Padrão: **RF-DETR base COCO**, classe pessoa, resolução 1120, limiar 0,4 (medidos em `data/avaliacoes/medicao-rfdetr-resolucao.json`). Alternativa: YOLO11m (`--detector-tipo yolo` ou `--detector <pesos.pt>`), `imgsz = 1280`, limiar 0,25. Manifests antigos sem `detector_tipo` são tratados como YOLO.
 - Filtro `pequeno`: altura da caixa < 0,4 × mediana das alturas das detecções.
 - Região do campo (`regiao_do_campo`), estimada uma vez por imagem: máscara HSV de gramado numa cópia reduzida (lado maior 640 px), fechamento morfológico (une as faixas de grama separadas por linhas de jarda) e abertura (remove ruído), núcleo elíptico de 2% do lado maior; ficam os componentes conexos com área ≥ `campo_area_min` (0,05) da imagem; o polígono é a envoltória convexa da união desses componentes, levada de volta à resolução original. Pintura de end zone, letras, logos, linhas brancas e sombras dentro do campo ficam dentro da envoltória. Sem componente grande o bastante → sem região (nenhum descarte por campo).
 - Filtro `fora_de_campo`: os pés (centro da base da caixa) estão fora da envoltória por mais que `campo_margem_rel` (0,02) × diagonal da imagem (`cv2.pointPolygonTest` com distância).
