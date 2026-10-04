@@ -613,6 +613,31 @@ def test_eval_detect_erros_de_detector(dados, tmp_path, monkeypatch):
         assert trecho in r.output, (args, r.output)
 
 
+def test_eval_detect_resolucao_sem_rfdetr_avisa(dados, tmp_path, monkeypatch):
+    """--resolucao só vale para o RF-DETR; se nenhum preditor for RF-DETR, é provável engano."""
+    monkeypatch.setenv("COLUMNS", "300")
+    _espiar_detector_cli(monkeypatch)
+    ds = _dataset_deteccao(tmp_path / "ds")
+
+    r = runner.invoke(app, ["eval", "detect", "--dataset", str(ds), "--detector-tipo", "yolo",
+                            "--resolucao", "560"])
+
+    assert r.exit_code == 0, r.output
+    assert "--resolucao" in r.output and "nenhum preditor" in r.output
+
+
+def test_eval_detect_resolucao_com_benchmark_rfdetr_nao_avisa(dados, tmp_path, monkeypatch):
+    monkeypatch.setenv("COLUMNS", "300")
+    _espiar_detector_cli(monkeypatch)
+    ds = _dataset_deteccao(tmp_path / "ds")
+
+    r = runner.invoke(app, ["eval", "detect", "--dataset", str(ds), "--detector-tipo", "yolo",
+                            "--resolucao", "560", "--benchmark", "rfdetr"])
+
+    assert r.exit_code == 0, r.output
+    assert "nenhum preditor" not in r.output
+
+
 def test_help_menciona_detector_tipo():
     for comando in (["analyze", "--help"], ["eval", "detect", "--help"]):
         r = runner.invoke(app, comando, env={"COLUMNS": "300"})

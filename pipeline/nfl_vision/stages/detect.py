@@ -8,13 +8,12 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from nfl_vision.config import VARIANTES_RFDETR, Config
+from nfl_vision.config import DETECTORES, VARIANTES_RFDETR, Config
 from nfl_vision.cores import mascara_gramado
 from nfl_vision.schemas import Deteccao, DetectOut
 
 
 LADO_MAX_CAMPO = 640
-DETECTORES = ("rfdetr", "yolo")
 
 
 def regiao_do_campo(img: np.ndarray, cfg: Config) -> np.ndarray | None:
@@ -96,7 +95,7 @@ def rotulo_pesos(pesos: str) -> str:
 
 
 def rotulo_detector(cfg: Config) -> str:
-    """Nome curto do detector da config: `rfdetr-base@896` ou o rótulo dos pesos YOLO."""
+    """Nome curto do detector da config: `rfdetr-base@1120` ou o rótulo dos pesos YOLO."""
     if cfg.detector_tipo == "rfdetr":
         return f"rfdetr-{cfg.detector_modelo_rfdetr}@{cfg.detector_resolucao}"
     return rotulo_pesos(cfg.detector_pesos)

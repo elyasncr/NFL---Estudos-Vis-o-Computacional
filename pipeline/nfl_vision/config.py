@@ -1,6 +1,6 @@
 """Parâmetros do pipeline. A configuração usada é gravada em cada análise."""
 
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
@@ -80,3 +80,8 @@ class Config(BaseModel):
         if self.detector_conf is not None:
             return self.detector_conf
         return 0.4 if self.detector_tipo == "rfdetr" else 0.25
+
+
+# única fonte dos detectores aceitos: o Literal do campo detector_tipo (cli.py e
+# stages/detect.py importam daqui, em vez de repetir a tupla)
+DETECTORES: tuple[str, ...] = get_args(Config.model_fields["detector_tipo"].annotation)

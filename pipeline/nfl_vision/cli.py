@@ -12,7 +12,7 @@ from rich.markup import escape
 from rich.table import Table
 
 from nfl_vision import paths, pipeline, teams
-from nfl_vision.config import Config
+from nfl_vision.config import DETECTORES, Config
 from nfl_vision.runner import EtapaFalhou, gravar_json
 from nfl_vision.schemas import Analise, Contexto
 from nfl_vision.stages import ingest
@@ -25,7 +25,6 @@ treino_app = typer.Typer(help="Preparação do dataset e ajuste fino do detector
 app.add_typer(treino_app, name="treino")
 console = Console()
 
-DETECTORES = ("rfdetr", "yolo")
 AJUDA_DETECTOR_TIPO = "Detector: rfdetr (padrão) ou yolo"
 
 
@@ -320,6 +319,10 @@ def eval_detect_cmd(
     if resolucao is not None:
         ajustes["detector_resolucao"] = resolucao
     cfg = Config(detector_conf=conf, **ajustes)
+    if resolucao is not None and cfg.detector_tipo != "rfdetr" and "rfdetr" not in benchmark:
+        console.print(
+            f"[yellow]--resolucao {resolucao} foi informado, mas nenhum preditor RF-DETR vai "
+            "rodar (o preditor nosso é yolo e --benchmark rfdetr não foi pedido)[/yellow]")
     amostras = _carregar_deteccao(dataset, split, "player")
     lista = _criar_preditores(benchmark, cfg, conf, modelo_roboflow)
 

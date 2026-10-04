@@ -61,3 +61,18 @@ def test_resolucao_multiplo_de_56_aceita():
 def test_variante_do_rfdetr_invalida_lista_as_suportadas():
     with pytest.raises(ValidationError, match="use uma de: base"):
         Config(detector_modelo_rfdetr="large")
+
+
+def test_detectores_vem_do_literal_de_detector_tipo():
+    from nfl_vision.config import DETECTORES
+
+    assert DETECTORES == ("rfdetr", "yolo")
+
+
+def test_detectores_tem_uma_unica_fonte_para_cli_e_detect():
+    from nfl_vision import cli
+    from nfl_vision.config import DETECTORES
+    from nfl_vision.stages import detect
+
+    assert cli.DETECTORES is DETECTORES
+    assert detect.DETECTORES is DETECTORES
