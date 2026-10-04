@@ -5,7 +5,7 @@ from nfl_vision.config import Config
 from nfl_vision.cores import bgr_para_lab, hex_para_lab
 from nfl_vision.schemas import Deteccao
 from nfl_vision.stages.team import (
-    agrupar, classificar, eh_arbitro, eh_arbitro_deteccao, eh_branco, mapear_grupos,
+    agrupar, classificar, eh_arbitro, eh_arbitro_deteccao, eh_branco, mapear_grupos, recorte_tronco,
 )
 from sintetico import AZUL_BUF, VERMELHO_KC, arbitro, campo, jogador
 
@@ -17,6 +17,18 @@ PALETAS = {
 VERMELHO = hex_para_lab("#E31837")
 AZUL = hex_para_lab("#00338D")
 BRANCO = hex_para_lab("#FFFFFF")
+
+
+def test_recorte_tronco_usa_as_fracoes_da_config():
+    img = np.zeros((2000, 1000, 3), np.uint8)
+    bbox = (100.0, 200.0, 300.0, 1200.0)  # w=200, h=1000, sem recorte pelas bordas da imagem
+
+    recorte = recorte_tronco(img, bbox, CFG)
+    assert recorte.shape[:2] == (350, 100)  # 20-55% de 1000 (altura) x 25-75% de 200 (largura)
+
+    cfg_caixa_inteira = Config(tronco_altura=(0.0, 1.0), tronco_largura=(0.0, 1.0))
+    recorte_cheio = recorte_tronco(img, bbox, cfg_caixa_inteira)
+    assert recorte_cheio.shape[:2] == (1000, 200)
 
 
 def _listrado(h=48, w=36, largura=4):

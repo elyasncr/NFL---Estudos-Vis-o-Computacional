@@ -15,12 +15,14 @@ MIN_PIXELS = 50
 MAX_PIXELS_KMEANS = 3000
 
 
-def recorte_tronco(img: np.ndarray, bbox) -> np.ndarray:
-    """Tronco: 10–50% da altura e 20–80% da largura da caixa."""
+def recorte_tronco(img: np.ndarray, bbox, cfg: Config) -> np.ndarray:
+    """Tronco: frações de `cfg.tronco_altura`/`cfg.tronco_largura` da caixa (ver Config)."""
     x1, y1, x2, y2 = bbox
     w, h = x2 - x1, y2 - y1
+    ha1, ha2 = cfg.tronco_altura
+    la1, la2 = cfg.tronco_largura
     xa, ya, xb, yb = caixa_inteira(
-        (x1 + 0.20 * w, y1 + 0.10 * h, x1 + 0.80 * w, y1 + 0.50 * h), img.shape)
+        (x1 + la1 * w, y1 + ha1 * h, x1 + la2 * w, y1 + ha2 * h), img.shape)
     return img[ya:yb, xa:xb]
 
 
@@ -64,7 +66,7 @@ def eh_arbitro_deteccao(img: np.ndarray, bbox, cfg: Config) -> bool | None:
     Usada por `classificar` e pelo preditor de avaliação para que a ordem das
     duas verificações (pixels suficientes, depois listras) não possa divergir.
     """
-    recorte = recorte_tronco(img, bbox)
+    recorte = recorte_tronco(img, bbox, cfg)
     px = pixels_uteis(recorte, cfg)
     if len(px) < MIN_PIXELS:
         return None
@@ -161,7 +163,7 @@ def classificar(img: np.ndarray, deteccoes: list[Deteccao],
         elif arbitro:
             itens[d.det_id] = TimeDet(det_id=d.det_id, time=None, confianca=1.0, arbitro=True)
         else:
-            px = pixels_uteis(recorte_tronco(img, d.bbox), cfg)
+            px = pixels_uteis(recorte_tronco(img, d.bbox, cfg), cfg)
             candidatos.append((d.det_id, cor_dominante(px)))
 
     if candidatos:

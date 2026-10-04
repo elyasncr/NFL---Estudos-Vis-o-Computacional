@@ -50,6 +50,11 @@ class Config(BaseModel):
     gramado_hsv_max: tuple[int, int, int] = (85, 255, 255)
     mascara_gramado_max_tronco: float = 0.6
 
+    # recorte do tronco (fração da caixa): medido em data/avaliacoes/medicao-time-recorte.json
+    # (CIN x CLE, split test) — 20-55%/25-75% é a geometria mais robusta entre RF-DETR e YOLO
+    # (colunas mais estreitas evitam braço e gramado nas caixas mais justas do RF-DETR)
+    tronco_altura: tuple[float, float] = (0.20, 0.55)
+    tronco_largura: tuple[float, float] = (0.25, 0.75)
     limiar_time: float = 0.60
     delta_e_grupo_unico: float = 15.0
 
@@ -71,6 +76,14 @@ class Config(BaseModel):
             raise ValueError(
                 f"variante do RF-DETR desconhecida: '{valor}'; use uma de: "
                 f"{', '.join(VARIANTES_RFDETR)}")
+        return valor
+
+    @field_validator("tronco_altura", "tronco_largura")
+    @classmethod
+    def _fracao_valida(cls, valor: tuple[float, float]) -> tuple[float, float]:
+        a, b = valor
+        if not 0 <= a < b <= 1:
+            raise ValueError("a fração do tronco deve ser 0 <= início < fim <= 1")
         return valor
 
     def limiar(self) -> float:

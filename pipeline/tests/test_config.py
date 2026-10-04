@@ -76,3 +76,25 @@ def test_detectores_tem_uma_unica_fonte_para_cli_e_detect():
 
     assert cli.DETECTORES is DETECTORES
     assert detect.DETECTORES is DETECTORES
+
+
+def test_padroes_do_recorte_de_tronco():
+    # medido em data/avaliacoes/medicao-time-recorte.json (CIN x CLE, split test)
+    cfg = Config()
+    assert cfg.tronco_altura == (0.20, 0.55)
+    assert cfg.tronco_largura == (0.25, 0.75)
+
+
+@pytest.mark.parametrize("campos", [
+    {"tronco_altura": (0.5, 0.2)},
+    {"tronco_altura": (0.5, 0.5)},
+    {"tronco_altura": (-0.1, 0.5)},
+    {"tronco_altura": (0.2, 1.1)},
+    {"tronco_largura": (0.8, 0.2)},
+    {"tronco_largura": (0.2, 0.2)},
+    {"tronco_largura": (-0.1, 0.8)},
+    {"tronco_largura": (0.2, 1.1)},
+])
+def test_tronco_fracoes_invalidas(campos):
+    with pytest.raises(ValidationError):
+        Config(**campos)
