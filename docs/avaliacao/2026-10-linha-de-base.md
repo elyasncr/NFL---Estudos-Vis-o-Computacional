@@ -2,7 +2,7 @@
 
 Data: 2026-10-04 · Código: commit `6ed67ff` (branch `feat/pipeline-fotos`) · Hardware: RTX 5070 Ti (detecção), CPU (OCR)
 
-Resultados brutos em `data/avaliacoes/detect-20261004-002931.json` e `data/avaliacoes/jersey-20261004-002217.json` (fora do git).
+Resultados brutos em `data/avaliacoes/detect-20261004-002931.json` (split de teste), `data/avaliacoes/detect-20261004-003550.json` (split de validação) e `data/avaliacoes/jersey-20261004-002217.json` (fora do git).
 
 ## Detecção
 
@@ -28,7 +28,7 @@ Como ler a tabela:
 
 ## Número da camisa (OCR)
 
-Dataset: `taiseis-workspace/jersey-number-ijbaq` v1 (CC BY 4.0), recortes de camisa de **outros esportes**, split de teste. É uma aproximação até existirem recortes próprios de NFL.
+Dataset: `taiseis-workspace/jersey-number-ijbaq` v1 (CC BY 4.0), recortes de camisa de **outros esportes**, split de teste. É uma aproximação até existirem recortes próprios de NFL. Como o dataset já traz o recorte do número, `eval jersey` pontua a imagem inteira de cada amostra e pula a etapa `recorte_numero` do pipeline (que recorta a região do número dentro da caixa de uma detecção).
 
 | Métrica | Valor |
 | --- | --- |

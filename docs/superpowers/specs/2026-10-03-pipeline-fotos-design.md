@@ -37,11 +37,12 @@ nfl-vision/                 (raiz do repositório)
       stages/  ingest.py  detect.py  team.py  jersey.py  roster.py
       eval/    metricas.py  datasets.py  preditores.py  detect.py  jersey.py
     tests/                  # testes do pipeline (rápidos e @model)
-  notebooks/                # exploração e avaliação; importam o pacote
+  notebooks/                # exploração e avaliação; importam o pacote (futuro)
   data/                     # ignorado pelo git
     runs/<analise_id>/
     cache/
     datasets/
+    avaliacoes/
   docs/
 ```
 
@@ -49,7 +50,7 @@ Notebooks nunca duplicam lógica do pacote.
 
 ## 4. Contratos de dados
 
-Cada etapa é uma função `run(ctx, inputs, config) -> Output`, sem efeitos colaterais além de ler a imagem e o cache. Toda detecção tem um `det_id` inteiro estável, atribuído em `detect`.
+Cada etapa é uma função `executar(estado) -> <Etapa>Out` (ex.: `DetectOut`, `TeamOut`), registrada como `runner.Etapa(nome, saida, executar)`. `estado` é um `runner.Estado`: contexto, config e as saídas das etapas anteriores em `estado.saidas`; a imagem só é decodificada na primeira chamada de `estado.imagem()` (lazy — etapas que não precisam dela, como `roster`, não pagam o custo). Os únicos efeitos colaterais são ler a imagem e ler/gravar os caches (`rosters`, `teams`). Toda detecção tem um `det_id` inteiro estável, atribuído em `detect`.
 
 | Etapa | Saída por detecção |
 | --- | --- |
@@ -74,8 +75,8 @@ data/runs/<analise_id>/
 ```
 
 - `analise_id` = `AAAA-MM-DD-NNN`, sequencial por dia.
-- `manifest.json` registra: versão do pacote, nome e hash dos pesos do detector, versão do PaddleOCR, todos os parâmetros de `config`, e por etapa `status` (`ok` \| `erro`), mensagem de erro e duração.
-- `analise.json` segue exatamente o exemplo do SDD. Em fotos, `track_id = det_id` e `frames_visiveis = [0]`; `midia = {"tipo": "foto"}`. Jogadores com time ou número desconhecido aparecem com esses campos `null`. Árbitros e descartados não entram na lista.
+- `manifest.json` registra: versão do pacote, nome e hash dos pesos do detector, versão do PaddleOCR, todos os parâmetros de `config`, e por etapa `status` (`ok` \| `erro`), mensagem de erro e duração. Ao retomar com `--from`, se a config efetivamente usada (campo novo ausente ganha o padrão, campo removido é ignorado) difere da gravada, o campo `config` passa a registrar essa config efetiva e a versão antiga fica em `config_original` — só na primeira vez que isso acontece.
+- `analise.json` segue exatamente o exemplo do SDD. Em fotos, `track_id = det_id` e `frames_visiveis = [0]`; `midia = {"tipo": "foto", "largura": ..., "altura": ...}`. Jogadores com time ou número desconhecido aparecem com esses campos `null`. Árbitros e descartados não entram na lista.
 
 ### Correções
 
@@ -171,11 +172,12 @@ Caixa de 2 px na cor `team_color` do time, rótulo `KC 87 TE` (deslocado para a 
 
 ## 9. Avaliação
 
-- **Dataset de detecção:** fork no workspace `elyas-carvalho` do Universe `nflplayerdetection-mjrl1/nfl-player-model` (338 imagens, classes `player`, `referee`, `ball`; CC BY 4.0, citar a fonte). A avaliação usa só o split de teste; `ball` é ignorada.
-- `eval detect`: no split de teste, mAP@0.5 da classe jogador (as detecções de `pessoa` não descartadas pelo nosso pipeline contra `player`) e a fração de árbitros cobertos por caixa de jogador (IoU ≥ 0,5). Todos os preditores usam a mesma confiança mínima (`--conf`, padrão `detector_conf` da configuração); o JSON salvo registra dataset, split, `conf`, configuração, versão e, por preditor, o pós-processamento aplicado. É regravado após cada preditor, e a falha de um preditor fica registrada sem interromper os outros.
+- **Dataset de detecção:** fork no workspace `elyas-carvalho` do Universe `nflplayerdetection-mjrl1/nfl-player-model` (338 imagens, classes `player`, `referee`, `ball`; CC BY 4.0, citar a fonte). `ball` é ignorada.
+- `eval detect` e `eval jersey` recebem `--split` (padrão `test`; exports do Roboflow usam `valid`, não `val`). A linha de base (`docs/avaliacao/`) mede os dois splits de detecção, `test` e `valid`.
+- `eval detect`: mAP@0.5 da classe jogador (as detecções de `pessoa` não descartadas pelo nosso pipeline contra `player`) e a fração de árbitros cobertos por caixa de jogador (IoU ≥ 0,5). Todos os preditores usam a mesma confiança mínima (`--conf`, padrão `detector_conf` da configuração); o JSON salvo registra dataset, split, `conf`, configuração, versão e, por preditor, o pós-processamento aplicado. É regravado após cada preditor, e a falha de um preditor fica registrada sem interromper os outros.
 - `eval jersey`: acurácia de número num dataset de recortes de números do Roboflow Universe (outro esporte, como linha de base aproximada) até existirem recortes próprios de NFL; reporta também a taxa de `null` e quantos rótulos ilegíveis foram excluídos.
 - Datasets baixados por script com o pacote `roboflow` e a API key em `ROBOFLOW_API_KEY` (`.env`), em `data/datasets/`. O MCP do Roboflow é usado só durante o desenvolvimento, para inspecionar e exportar.
-- **Benchmarks** (opcionais, fora de `analyze`), todos no mesmo split de teste e com a mesma métrica:
+- **Benchmarks** (opcionais, fora de `analyze`), todos no mesmo split (`--split`) e com a mesma métrica:
   - `--benchmark yolo-bruto`: o mesmo YOLO do pipeline (pessoa, COCO), sem filtros de campo nem remoção de árbitro. "nosso" contra `yolo-bruto` mede o efeito dos filtros.
   - `--benchmark rfdetr`: RF-DETR pré-treinado COCO rodando localmente (pacote `rfdetr`), sem pós-processamento. A comparação de arquitetura é `yolo-bruto` contra `rfdetr` (os dois sem filtros).
   - `--benchmark roboflow-nfl`: um modelo treinado do próprio projeto `nfl-player-model`, via inferência hospedada do Roboflow (`inference-sdk`, API key no header). Só envia imagens do split de teste do dataset público, nunca mídias do usuário. Compara "detector genérico + filtros" com "modelo treinado em NFL".
