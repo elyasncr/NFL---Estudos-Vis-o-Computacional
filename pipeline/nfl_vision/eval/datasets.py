@@ -33,11 +33,11 @@ def baixar(workspace: str, projeto: str, versao: int, formato: str, destino: Pat
     return alvo
 
 
-def _splits_existentes(raiz: Path) -> list[str]:
+def splits_existentes(raiz: Path) -> list[str]:
     return sorted(p.name for p in raiz.iterdir() if p.is_dir()) if raiz.is_dir() else []
 
 
-def _nomes_das_classes(raiz: Path) -> list[str]:
+def nomes_das_classes(raiz: Path) -> list[str]:
     arquivo = raiz / "data.yaml"
     if not arquivo.exists():
         raise FileNotFoundError(f"data.yaml não encontrado em {raiz} (esperado um dataset em formato YOLO)")
@@ -63,10 +63,10 @@ def _caixa_da_linha(partes: list[str], w: int, h: int) -> BBox | None:
 
 
 def carregar_yolo(raiz: Path, split: str = "test") -> list[AmostraDeteccao]:
-    nomes = _nomes_das_classes(raiz)
+    nomes = nomes_das_classes(raiz)
     pasta_imagens = raiz / split / "images"
     if not pasta_imagens.is_dir():
-        existentes = ", ".join(_splits_existentes(raiz)) or "nenhuma"
+        existentes = ", ".join(splits_existentes(raiz)) or "nenhuma"
         raise FileNotFoundError(
             f"pasta {pasta_imagens} não encontrada; pastas em {raiz}: {existentes} "
             "(exports do Roboflow usam 'valid', não 'val')")

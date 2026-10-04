@@ -18,6 +18,7 @@ ARBITRO = (60.0, 10.0, 100.0, 90.0)
 
 class PreditorFalso:
     nome = "falso"
+    pos_processamento = "nenhum"
 
     def __init__(self, caixas):
         self.caixas = caixas
@@ -32,7 +33,8 @@ def test_avaliar_deteccao():
     so_jogador = eval_detect.avaliar(PreditorFalso([JOGADOR]), amostras)
     com_arbitro = eval_detect.avaliar(PreditorFalso([JOGADOR, ARBITRO]), amostras)
 
-    assert so_jogador == {"preditor": "falso", "imagens": 1, "map50": 1.0, "arbitros_como_jogador": 0.0}
+    assert so_jogador == {"preditor": "falso", "pos_processamento": "nenhum", "imagens": 1,
+                          "map50": 1.0, "arbitros_como_jogador": 0.0}
     assert com_arbitro["map50"] == 1.0  # árbitro não é GT de jogador, vira FP de menor rank
     assert com_arbitro["arbitros_como_jogador"] == 1.0
 
@@ -61,7 +63,8 @@ def test_avaliar_ocr(tmp_path):
     r = eval_jersey.avaliar(leitor, amostras, limiar=0.60)
 
     assert r == {
-        "amostras": 3,                  # "-1", "07" e "00" não são números legíveis
+        "amostras": 3,
+        "excluidas": 3,                 # "-1", "07" e "00" não são números legíveis
         "taxa_null": pytest.approx(1 / 3),
         "acuracia_entre_lidos": 0.5,
         "acuracia_geral": pytest.approx(1 / 3),

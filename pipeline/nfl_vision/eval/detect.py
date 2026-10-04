@@ -17,6 +17,7 @@ def avaliar(preditor: Preditor, amostras: list[AmostraDeteccao],
     tem_arbitros = any(arbitros.values())
     return {
         "preditor": preditor.nome,
+        "pos_processamento": preditor.pos_processamento,
         "imagens": len(amostras),
         "map50": round(average_precision(predicoes, gts), 4),
         "arbitros_como_jogador": round(fracao_casada(arbitros, mantidas), 4) if tem_arbitros else None,

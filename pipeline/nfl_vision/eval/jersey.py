@@ -22,6 +22,7 @@ def avaliar(leitor: LeitorOCR, amostras: list[tuple[Path, str]], limiar: float,
     lidos = n - nulos
     return {
         "amostras": n,
+        "excluidas": len(amostras) - n,
         "taxa_null": nulos / n if n else None,
         "acuracia_entre_lidos": acertos / lidos if lidos else None,
         "acuracia_geral": acertos / n if n else None,

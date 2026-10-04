@@ -158,28 +158,168 @@ def test_eval_detect_benchmark_invalido(dados, tmp_path, monkeypatch):
     monkeypatch.setenv("COLUMNS", "200")
     r = runner.invoke(app, ["eval", "detect", "--dataset", str(tmp_path), "--benchmark", "xyz"])
     assert r.exit_code == 2, r.output
-    assert "rfdetr ou roboflow-nfl" in r.output
+    assert "yolo-bruto, rfdetr ou roboflow-nfl" in r.output
 
 
-def test_eval_jersey_grava_resultado(dados, tmp_path, monkeypatch):
+def _dataset_deteccao(raiz, nomes="['ball', 'player', 'referee']", split="test"):
+    (raiz / split / "images").mkdir(parents=True)
+    (raiz / "data.yaml").write_text(f"names: {nomes}\n", encoding="utf-8")
+    (raiz / split / "labels").mkdir(parents=True)
+    Image.new("RGB", (100, 100), (40, 140, 40)).save(raiz / split / "images" / "a.jpg")
+    (raiz / split / "labels" / "a.txt").write_text("1 0.5 0.5 0.2 0.4\n")
+    return raiz
+
+
+def _detector_falso(monkeypatch):
+    from nfl_vision.eval import preditores
+    from nfl_vision.schemas import Deteccao
+
+    def detectar(img, cfg):
+        return [Deteccao(det_id=0, bbox=(40.0, 30.0, 60.0, 70.0), confianca=0.9)]
+
+    monkeypatch.setattr(preditores, "detectar_pessoas", detectar)
+
+
+def _ler_avaliacao(prefixo):
     import json
 
+    return json.loads(next(paths.avaliacoes_dir().glob(f"{prefixo}-*.json")).read_text("utf-8"))
+
+
+def test_eval_detect_grava_contexto_e_pos_processamento(dados, tmp_path, monkeypatch):
+    monkeypatch.setenv("COLUMNS", "300")
+    _detector_falso(monkeypatch)
+    ds = _dataset_deteccao(tmp_path / "ds")
+
+    r = runner.invoke(app, ["eval", "detect", "--dataset", str(ds), "--benchmark", "yolo-bruto",
+                            "--conf", "0.3"])
+
+    assert r.exit_code == 0, r.output
+    assert "pós-processamento" in r.output
+    assert "árbitros cobertos por caixa de jogador (IoU ≥ 0,5)" in r.output
+    salvo = _ler_avaliacao("detect")
+    assert salvo["dataset"] == str(ds) and salvo["split"] == "test"
+    assert salvo["conf"] == 0.3 and salvo["config"]["detector_conf"] == 0.3
+    assert salvo["versao"]
+    assert "modelo_roboflow" not in salvo
+    assert [x["pos_processamento"] for x in salvo["resultados"]] == [
+        "filtros de campo + remoção de árbitro", "nenhum"]
+    assert salvo["resultados"][1]["map50"] == 1.0
+
+
+def test_eval_detect_conf_padrao_vem_da_config(dados, tmp_path, monkeypatch):
+    from nfl_vision.config import Config
+
+    _detector_falso(monkeypatch)
+    r = runner.invoke(app, ["eval", "detect", "--dataset", str(_dataset_deteccao(tmp_path / "ds"))])
+    assert r.exit_code == 0, r.output
+    assert _ler_avaliacao("detect")["conf"] == Config().detector_conf
+
+
+def test_eval_detect_preditor_com_erro_nao_para_os_outros(dados, tmp_path, monkeypatch):
+    from nfl_vision.eval import preditores
+
+    _detector_falso(monkeypatch)
+    ds = _dataset_deteccao(tmp_path / "ds")
+    vistos = []
+
+    def quebrar(self, imagem):
+        raise RuntimeError("GPU sem memória")
+
+    def bruto_espiando(self, imagem):
+        vistos.append(_ler_avaliacao("detect")["resultados"])  # já gravou o preditor anterior
+        return [(0.9, (40.0, 30.0, 60.0, 70.0))]
+
+    monkeypatch.setattr(preditores.PreditorNosso, "prever", quebrar)
+    monkeypatch.setattr(preditores.PreditorYoloBruto, "prever", bruto_espiando)
+    r = runner.invoke(app, ["eval", "detect", "--dataset", str(ds), "--benchmark", "yolo-bruto"])
+
+    assert r.exit_code == 1, r.output
+    assert vistos and vistos[0][0]["erro"] == "RuntimeError: GPU sem memória"
+    resultados = _ler_avaliacao("detect")["resultados"]
+    assert resultados[0]["erro"] == "RuntimeError: GPU sem memória"
+    assert resultados[1]["map50"] == 1.0
+
+
+def test_eval_detect_erros_de_entrada(dados, tmp_path, monkeypatch):
+    from nfl_vision.eval import preditores
+
+    monkeypatch.setenv("COLUMNS", "300")
+    monkeypatch.delenv("ROBOFLOW_API_KEY", raising=False)
+    monkeypatch.setattr(cli, "load_dotenv", lambda: None)  # um .env local não pode trazer a chave
+    ds =_dataset_deteccao(tmp_path / "ds")
+    sem_player = _dataset_deteccao(tmp_path / "sem_player", nomes="['ball', 'goleiro']")
+    so_valid = _dataset_deteccao(tmp_path / "so_valid", split="valid")
+
+    def sem_extra(*a, **k):
+        raise ImportError("No module named 'rfdetr'")
+
+    monkeypatch.setattr(preditores, "PreditorRFDETR", sem_extra)
+    casos = [
+        (["--dataset", str(tmp_path / "nada")], "data.yaml"),
+        (["--dataset", str(so_valid), "--split", "val"], "valid"),
+        (["--dataset", str(sem_player)], "goleiro"),
+        (["--dataset", str(ds), "--benchmark", "rfdetr"], "uv sync --extra ocr --extra eval"),
+        (["--dataset", str(ds), "--benchmark", "roboflow-nfl"], "ROBOFLOW_API_KEY"),
+    ]
+    for args, trecho in casos:
+        r = runner.invoke(app, ["eval", "detect", *args])
+        assert r.exit_code == 2, (args, r.output)
+        assert trecho in r.output, (args, r.output)
+
+
+def test_eval_detect_help_menciona_valid():
+    r = runner.invoke(app, ["eval", "detect", "--help"], env={"COLUMNS": "300"})
+    assert r.exit_code == 0, r.output
+    assert "valid" in r.output and "--conf" in r.output and "yolo-bruto" in r.output
+
+
+def _leitor_falso(monkeypatch):
     from nfl_vision.stages import jersey
     from nfl_vision.stages.jersey import Leitura
-
-    (tmp_path / "ds" / "test" / "87").mkdir(parents=True)
-    Image.new("RGB", (20, 20)).save(tmp_path / "ds" / "test" / "87" / "a.jpg")
 
     class Leitor:
         def ler(self, img):
             return [Leitura("87", 0.9)]
 
     monkeypatch.setattr(jersey, "leitor_padrao", lambda device: Leitor())
+
+
+def test_eval_jersey_grava_resultado(dados, tmp_path, monkeypatch):
+    from nfl_vision.config import Config
+
+    for rotulo in ("87", "-1"):
+        (tmp_path / "ds" / "test" / rotulo).mkdir(parents=True)
+        Image.new("RGB", (20, 20)).save(tmp_path / "ds" / "test" / rotulo / "a.jpg")
+    _leitor_falso(monkeypatch)
+
     r = runner.invoke(app, ["eval", "jersey", "--dataset", str(tmp_path / "ds")])
 
     assert r.exit_code == 0, r.output
-    arquivo = next(paths.avaliacoes_dir().glob("jersey-*.json"))
-    assert json.loads(arquivo.read_text("utf-8"))["acuracia_geral"] == 1.0
+    salvo = _ler_avaliacao("jersey")
+    cfg = Config()
+    assert salvo["dataset"] == str(tmp_path / "ds") and salvo["split"] == "test"
+    assert salvo["limiar"] == cfg.limiar_numero and salvo["altura_min"] == cfg.numero_altura_min
+    assert salvo["versao"]
+    assert salvo["resultado"]["acuracia_geral"] == 1.0
+    assert salvo["resultado"]["excluidas"] == 1
+
+
+def test_eval_jersey_erros_de_entrada(dados, tmp_path, monkeypatch):
+    monkeypatch.setenv("COLUMNS", "300")
+    _leitor_falso(monkeypatch)
+    (tmp_path / "ds" / "valid" / "87").mkdir(parents=True)
+    Image.new("RGB", (20, 20)).save(tmp_path / "ds" / "valid" / "87" / "a.jpg")
+    (tmp_path / "vazio" / "test").mkdir(parents=True)
+
+    casos = [
+        (["--dataset", str(tmp_path / "ds"), "--split", "val"], "valid"),
+        (["--dataset", str(tmp_path / "vazio")], "nenhuma imagem"),
+    ]
+    for args, trecho in casos:
+        r = runner.invoke(app, ["eval", "jersey", *args])
+        assert r.exit_code == 2, (args, r.output)
+        assert trecho in r.output, (args, r.output)
 
 
 def test_file_not_found_na_analise_nova_nao_culpa_run(dados, foto_sintetica, monkeypatch):
