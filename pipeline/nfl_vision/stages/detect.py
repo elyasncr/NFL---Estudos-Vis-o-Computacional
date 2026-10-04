@@ -1,4 +1,4 @@
-"""Etapa 2: detecção de pessoas (YOLO) e descarte de quem está fora de campo."""
+"""Etapa 2: detecção de pessoas (RF-DETR ou YOLO) e descarte de quem está fora de campo."""
 
 import hashlib
 from functools import lru_cache
@@ -6,6 +6,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from PIL import Image
 
 from nfl_vision.config import Config
 from nfl_vision.cores import mascara_gramado
@@ -13,6 +14,7 @@ from nfl_vision.schemas import Deteccao, DetectOut
 
 
 LADO_MAX_CAMPO = 640
+DETECTORES = ("rfdetr", "yolo")
 
 
 def regiao_do_campo(img: np.ndarray, cfg: Config) -> np.ndarray | None:
@@ -84,11 +86,37 @@ def aplicar_filtros(deteccoes: list[Deteccao], img: np.ndarray, cfg: Config) -> 
     return saida
 
 
+def rotulo_pesos(pesos: str) -> str:
+    """Nome curto dos pesos YOLO: `.../player-v1/weights/best.pt` vira `player-v1`."""
+    caminho = Path(pesos)
+    if caminho.parent.name == "weights" and caminho.stem in ("best", "last"):
+        treino = caminho.parent.parent.name
+        return treino if caminho.stem == "best" else f"{treino}/last"
+    return caminho.stem
+
+
+def rotulo_detector(cfg: Config) -> str:
+    """Nome curto do detector da config: `rfdetr-base@896` ou o rótulo dos pesos YOLO."""
+    if cfg.detector_tipo == "rfdetr":
+        return f"rfdetr-{cfg.detector_modelo_rfdetr}@{cfg.detector_resolucao}"
+    return rotulo_pesos(cfg.detector_pesos)
+
+
 @lru_cache(maxsize=2)
 def _modelo(pesos: str):
     from ultralytics import YOLO
 
     return YOLO(pesos)
+
+
+@lru_cache(maxsize=2)
+def _modelo_rfdetr(variante: str, resolucao: int, device: str):
+    import rfdetr
+
+    classe = getattr(rfdetr, f"RFDETR{variante.capitalize()}", None)
+    if classe is None:
+        raise ValueError(f"variante do RF-DETR desconhecida: '{variante}'")
+    return classe(resolution=resolucao, device=device)
 
 
 def resolver_device(device: str) -> str:
@@ -99,7 +127,41 @@ def resolver_device(device: str) -> str:
     return device
 
 
-def detectar_pessoas(img: np.ndarray, cfg: Config) -> list[Deteccao]:
+def _modelo_rfdetr_da_config(cfg: Config):
+    return _modelo_rfdetr(cfg.detector_modelo_rfdetr, cfg.detector_resolucao,
+                          resolver_device(cfg.device))
+
+
+def _classes_coco() -> dict[int, str]:
+    try:
+        from rfdetr.assets.coco_classes import COCO_CLASSES
+    except ImportError:  # rfdetr < 1.9
+        from rfdetr.util.coco_classes import COCO_CLASSES
+    return COCO_CLASSES
+
+
+def _eh_pessoa(dets) -> list[bool]:
+    nomes = (dets.data or {}).get("class_name")
+    if nomes is not None:
+        return [n == "person" for n in nomes]
+    ids_pessoa = {i for i, nome in _classes_coco().items() if nome == "person"}
+    return [int(k) in ids_pessoa for k in dets.class_id]
+
+
+def _detectar_rfdetr(img: np.ndarray, cfg: Config) -> list[Deteccao]:
+    # o pipeline trabalha em BGR (OpenCV); o RF-DETR espera RGB
+    rgb = Image.fromarray(np.ascontiguousarray(img[:, :, ::-1]))
+    dets = _modelo_rfdetr_da_config(cfg).predict(rgb, threshold=cfg.detector_conf)
+    pessoas = sorted(
+        ((float(conf), tuple(float(v) for v in caixa))
+         for caixa, conf, pessoa in zip(dets.xyxy, dets.confidence, _eh_pessoa(dets)) if pessoa),
+        key=lambda p: -p[0],  # como o YOLO: det_id 0 é a mais confiante
+    )
+    return [Deteccao(det_id=i, bbox=caixa, confianca=conf)
+            for i, (conf, caixa) in enumerate(pessoas)]
+
+
+def _detectar_yolo(img: np.ndarray, cfg: Config) -> list[Deteccao]:
     resultado = _modelo(cfg.detector_pesos).predict(
         img, imgsz=cfg.detector_imgsz, conf=cfg.detector_conf, classes=[0],
         device=resolver_device(cfg.device), verbose=False,
@@ -112,12 +174,29 @@ def detectar_pessoas(img: np.ndarray, cfg: Config) -> list[Deteccao]:
     ]
 
 
-def caminho_pesos(pesos: str) -> str:
-    """Arquivo que o ultralytics realmente carregou (pode ter baixado para outro lugar)."""
-    return getattr(_modelo(pesos), "ckpt_path", None) or pesos
+def detectar_pessoas(img: np.ndarray, cfg: Config) -> list[Deteccao]:
+    """Pessoas detectadas, sem filtros; o detector vem de `cfg.detector_tipo`."""
+    if cfg.detector_tipo == "rfdetr":
+        return _detectar_rfdetr(img, cfg)
+    return _detectar_yolo(img, cfg)
 
 
-def sha256_pesos(pesos: str) -> str | None:
+def caminho_pesos(cfg: Config) -> str | None:
+    """Arquivo de pesos que o detector realmente carregou (pode ter sido baixado para outro lugar).
+
+    YOLO: `ckpt_path` do ultralytics. RF-DETR: `model_config.pretrain_weights`
+    (ex.: `~/.roboflow/models/rf-detr-base.pth`); None se o pacote não expuser o caminho.
+    """
+    if cfg.detector_tipo == "rfdetr":
+        config_modelo = getattr(_modelo_rfdetr_da_config(cfg), "model_config", None)
+        caminho = getattr(config_modelo, "pretrain_weights", None)
+        return str(caminho) if caminho else None
+    return getattr(_modelo(cfg.detector_pesos), "ckpt_path", None) or cfg.detector_pesos
+
+
+def sha256_pesos(pesos: str | None) -> str | None:
+    if not pesos:
+        return None
     caminho = Path(pesos)
     return hashlib.sha256(caminho.read_bytes()).hexdigest() if caminho.exists() else None
 
@@ -127,5 +206,5 @@ def executar(estado) -> DetectOut:
     cfg = estado.config
     return DetectOut(
         deteccoes=aplicar_filtros(detectar_pessoas(img, cfg), img, cfg),
-        pesos_sha256=sha256_pesos(caminho_pesos(cfg.detector_pesos)),
+        pesos_sha256=sha256_pesos(caminho_pesos(cfg)),
     )

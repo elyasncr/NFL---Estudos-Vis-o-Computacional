@@ -19,11 +19,12 @@ dependencies = [
   "torch>=2.7",
   "torchvision>=0.22",
   "ultralytics>=8.3",
+  "rfdetr>=1.2",
 ]
 
 [project.optional-dependencies]
 ocr = ["paddleocr>=3.0", "paddlepaddle>=3.0"]
-eval = ["roboflow>=1.1", "rfdetr>=1.2", "inference-sdk>=0.50"]
+eval = ["roboflow>=1.1", "inference-sdk>=0.50"]
 
 [project.scripts]
 nfl-vision = "nfl_vision.cli:app"

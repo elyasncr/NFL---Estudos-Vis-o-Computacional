@@ -63,7 +63,7 @@ class LeitorFalso:
 
 @pytest.fixture
 def modelos_falsos(monkeypatch, foto_sintetica, tmp_path):
-    """Substitui YOLO e PaddleOCR. Conta as chamadas ao detector."""
+    """Substitui os detectores (RF-DETR e YOLO) e o PaddleOCR. Conta as chamadas ao detector."""
     from types import SimpleNamespace
 
     from nfl_vision.schemas import Deteccao
@@ -82,6 +82,9 @@ def modelos_falsos(monkeypatch, foto_sintetica, tmp_path):
     leitor = LeitorFalso([[Leitura("87", 0.95)], [Leitura("15", 0.90)],
                           [Leitura("17", 0.92)], [Leitura("3x", 0.99)]])
     monkeypatch.setattr(detect, "detectar_pessoas", detectar)
-    monkeypatch.setattr(detect, "_modelo", lambda p: SimpleNamespace(ckpt_path=str(pesos)))
+    modelo = SimpleNamespace(ckpt_path=str(pesos),
+                             model_config=SimpleNamespace(pretrain_weights=str(pesos)))
+    monkeypatch.setattr(detect, "_modelo", lambda p: modelo)
+    monkeypatch.setattr(detect, "_modelo_rfdetr", lambda variante, resolucao, device: modelo)
     monkeypatch.setattr(jersey, "leitor_padrao", lambda device: leitor)
     return chamadas

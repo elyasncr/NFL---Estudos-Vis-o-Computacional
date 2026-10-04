@@ -39,6 +39,7 @@ def test_manifest_registra_hash_dos_pesos(dados, foto_sintetica, modelos_falsos)
     manifest = ler_manifest(run_dir)
     assert manifest["versoes"]["detector_pesos_sha256"] == esperado
     assert "nfl-vision" in manifest["versoes"]
+    assert "rfdetr" in manifest["versoes"]
 
     pipeline.reprocessar(run_dir.name, "roster")
     assert ler_manifest(run_dir)["versoes"]["detector_pesos_sha256"] == esperado

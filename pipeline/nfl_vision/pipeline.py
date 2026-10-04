@@ -38,7 +38,8 @@ def _versao(pacote: str) -> str:
 
 
 def coletar_versoes() -> dict[str, str]:
-    return {p: _versao(p) for p in ("nfl-vision", "ultralytics", "torch", "paddleocr", "nflreadpy")}
+    return {p: _versao(p) for p in
+            ("nfl-vision", "rfdetr", "ultralytics", "torch", "paddleocr", "nflreadpy")}
 
 
 def _runner() -> Runner:

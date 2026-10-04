@@ -8,7 +8,7 @@ from PIL import Image, ImageOps
 from nfl_vision.config import Config
 from nfl_vision.eval.datasets import chave_roboflow
 from nfl_vision.schemas import BBox
-from nfl_vision.stages.detect import aplicar_filtros, detectar_pessoas
+from nfl_vision.stages.detect import _classes_coco, aplicar_filtros, detectar_pessoas, rotulo_pesos
 from nfl_vision.stages.ingest import carregar_imagem
 from nfl_vision.stages.team import eh_arbitro_deteccao
 
@@ -20,15 +20,6 @@ class Preditor(Protocol):
     pos_processamento: str
 
     def prever(self, imagem: Path) -> list[Predicao]: ...
-
-
-def rotulo_pesos(pesos: str) -> str:
-    """Nome curto dos pesos para o nome do preditor: `.../player-v1/weights/best.pt` vira `player-v1`."""
-    caminho = Path(pesos)
-    if caminho.parent.name == "weights" and caminho.stem in ("best", "last"):
-        treino = caminho.parent.parent.name
-        return treino if caminho.stem == "best" else f"{treino}/last"
-    return caminho.stem
 
 
 class PreditorNosso:
@@ -63,14 +54,6 @@ class PreditorYoloBruto:
 
     def prever(self, imagem: Path) -> list[Predicao]:
         return [(d.confianca, d.bbox) for d in detectar_pessoas(carregar_imagem(imagem), self.cfg)]
-
-
-def _classes_coco() -> dict[int, str]:
-    try:
-        from rfdetr.assets.coco_classes import COCO_CLASSES
-    except ImportError:  # rfdetr < 1.9
-        from rfdetr.util.coco_classes import COCO_CLASSES
-    return COCO_CLASSES
 
 
 class PreditorRFDETR:

@@ -950,6 +950,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
+    { name = "rfdetr" },
     { name = "rich" },
     { name = "scikit-image" },
     { name = "scikit-learn" },
@@ -962,7 +963,6 @@ dependencies = [
 [package.optional-dependencies]
 eval = [
     { name = "inference-sdk" },
-    { name = "rfdetr" },
     { name = "roboflow" },
 ]
 ocr = [
@@ -988,7 +988,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.8" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "rfdetr", marker = "extra == 'eval'", specifier = ">=1.2" },
+    { name = "rfdetr", specifier = ">=1.2" },
     { name = "rich", specifier = ">=13" },
     { name = "roboflow", marker = "extra == 'eval'", specifier = ">=1.1" },
     { name = "scikit-image", specifier = ">=0.24" },
